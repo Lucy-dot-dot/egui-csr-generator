@@ -1,56 +1,36 @@
-use dioxus::prelude::*;
+use eframe::egui;
 
-// Component for displaying OpenSSL command output
-#[component]
-pub fn OpenSSLOutput(output: Signal<String>) -> Element {
-    // Check if output is empty
-    let has_output = !output.read().is_empty();
+pub fn render(ui: &mut egui::Ui, output: &str) {
+    let has_output = !output.is_empty();
+    let has_error = output.to_lowercase().contains("error");
 
-    // Parse the output to identify errors vs normal output
-    let has_error = output.read().to_lowercase().contains("error");
+    ui.add_space(10.0);
+    ui.separator();
 
-    // Keep output alive for rendering
-    let _longer_living = output.read();
+    if has_output {
+        let heading = if has_error {
+            "OpenSSL Command Failed"
+        } else {
+            "Output"
+        };
 
-    rsx! {
-        div { class: "openssl-output-container",
-            // Only show if there's actual output
-            if has_output {
-                div {
-                    class: "openssl-output",
-                    class: if has_error {
-                        "openssl-output-error"
-                    } else {
-                        "openssl-output-success"
-                    },
+        ui.heading(heading);
 
-                    div { class: "openssl-output-header",
-                        h3 {
-                            if has_error {
-                                span { class: "openssl-output-icon error", "✖" }
-                                "OpenSSL Command Failed"
-                            } else {
-                                span { class: "openssl-output-icon success", "✓" }
-                                "Output"
-                            }
-                        }
-                    }
-
-                    div { class: "openssl-output-content",
-                        pre {
-                            code {
-                                class: "openssl-output-line",
-                                {output}
-                            }
-                        }
-                    }
-                }
-            } else {
-                div { class: "openssl-output-empty",
-                    "No output available"
-                }
-
-            }
-        }
+        egui::Frame::group(ui.style())
+            .inner_margin(10.0)
+            .show(ui, |ui| {
+                egui::ScrollArea::vertical()
+                    .max_height(200.0)
+                    .show(ui, |ui| {
+                        ui.add(
+                            egui::TextEdit::multiline(&mut output.to_string())
+                                .font(egui::TextStyle::Monospace)
+                                .desired_width(f32::INFINITY)
+                                .interactive(false),
+                        );
+                    });
+            });
+    } else {
+        ui.label(egui::RichText::new("No output available").weak().italics());
     }
 }

@@ -8,6 +8,8 @@ pub struct CertConfig<'a> {
     pub organization: &'a str,
     pub organizational_unit: Option<&'a str>,
     pub email: Option<&'a str>,
+    pub street_address: Option<&'a str>,
+    pub postal_code: Option<&'a str>,
     pub common_name: &'a str,
     pub san: &'a Vec<String>,
     pub key_size: &'a str,
@@ -53,9 +55,23 @@ impl<'a> CertConfig<'a> {
         config_content.push_str(&format!("C = {}\n", self.country));
         config_content.push_str(&format!("ST = {}\n", sanitize(self.state)));
         config_content.push_str(&format!("L = {}\n", sanitize(self.locality)));
+
+        // Optional street address and postal code
+        if let Some(street) = self.street_address {
+            if !street.trim().is_empty() {
+                config_content.push_str(&format!("street = {}\n", sanitize(street)));
+            }
+        }
+
+        if let Some(postal) = self.postal_code {
+            if !postal.trim().is_empty() {
+                config_content.push_str(&format!("postalCode = {}\n", postal));
+            }
+        }
+
         config_content.push_str(&format!("O = {}\n", sanitize(self.organization)));
 
-        // Optional OU and Email
+        // Optional OU
         if let Some(ou) = self.organizational_unit {
             if !ou.trim().is_empty() {
                 config_content.push_str(&format!("OU = {}\n", sanitize(ou)));
@@ -108,9 +124,9 @@ pub fn execute_openssl_command(command: &str) -> io::Result<(String, String)> {
         .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("Failed to execute command: {}", e)))?;
 
     if output.status.success() {
-        println!("OpenSSL command executed successfully!");
+        log::debug!("OpenSSL command executed successfully!");
     } else {
-        eprintln!("OpenSSL command failed with exit code: {}", output.status);
+        log::error!("OpenSSL command failed with exit code: {}", output.status);
     }
 
     Ok((String::from_utf8_lossy(&*output.stdout).parse().unwrap(), String::from_utf8_lossy(&*output.stderr).parse().unwrap()))

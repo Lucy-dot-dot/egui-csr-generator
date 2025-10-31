@@ -7,27 +7,11 @@ edition = "2024"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-dioxus = { version = "0.6.3", features = [] }
+eframe = "0.33.0"
+egui = "0.33.0"
 zip = "6.0.0"
 dirs = "6.0.0"
 fake = { version = "4.0.0", features = ["url", "http"] }
-eframe = "0.33.0"
-egui = "0.33.0"
-
-[features]
-default = ["desktop"]
-web = ["dioxus/web"]
-desktop = ["dioxus/desktop"]
-mobile = ["dioxus/mobile"]
-
-[profile]
-
-[profile.wasm-dev]
-inherits = "dev"
-opt-level = 1
-
-[profile.server-dev]
-inherits = "dev"
-
-[profile.android-dev]
-inherits = "dev"
+log = "0.4.28"
+env_logger = { version = "0.11.8", features = [] }
+time = { version = "0.3.44", features = ["local-offset", "formatting", "macros"] }

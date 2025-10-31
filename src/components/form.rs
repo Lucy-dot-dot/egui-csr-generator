@@ -1,225 +1,208 @@
-use dioxus::prelude::*;
+use eframe::egui;
+use crate::CertGenApp;
 
-#[component]
-pub fn Form(
-    mut country: Signal<String>,
-    mut state: Signal<String>,
-    mut locality: Signal<String>,
-    mut organization: Signal<String>,
-    mut common_name: Signal<String>,
-    mut current_san: Signal<String>,
-    mut sans: Signal<Vec<String>>,
-    on_clear: EventHandler<()>,
-    mut advanced_mode: Signal<bool>,
-    mut organizational_unit: Signal<String>,
-    mut email: Signal<String>,
-    mut key_size: Signal<String>,
-    mut hash_algorithm: Signal<String>,
-) -> Element {
-    let mut add_san = move || {
-        if !current_san.read().is_empty() {
-            sans.write().push(current_san.read().clone());
-            current_san.set(String::new());
-        }
-    };
+pub fn render(ui: &mut egui::Ui, app: &mut CertGenApp) {
+    egui::Frame::group(ui.style())
+        .inner_margin(10.0)
+        .show(ui, |ui| {
+            ui.set_max_width(ui.available_width());
 
-    rsx! {
-        div {
-            class: "form",
-            style: "position: relative;",
+            // Advanced mode toggle in top right
+            ui.horizontal(|ui| {
+                ui.label("");
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.checkbox(&mut app.advanced_mode, "Advanced");
+                });
+            });
 
-            // Advanced mode toggle in top right corner
-            div {
-                style: "position: absolute; top: .2rem; right: .75rem; z-index: 10;",
-                label {
-                    style: "display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: #6b7280; cursor: pointer; user-select: none;",
-                    input {
-                        type: "checkbox",
-                        checked: advanced_mode(),
-                        onchange: move |evt| advanced_mode.set(evt.checked()),
-                        style: "cursor: pointer;"
-                    }
-                    "Advanced"
-                }
-            }
+            ui.separator();
+            ui.add_space(5.0);
 
-            div {
-                class: "form-group",
+            // Country Code
+            ui.horizontal(|ui| {
+                ui.label("Country Code (2 letters):");
+                ui.add(egui::TextEdit::singleline(&mut app.country)
+                    .hint_text("DE")
+                    .desired_width(200.0));
+            });
 
-                label { "Country Code (2 letters):" }
-                input {
-                    placeholder: "DE",
-                    value: "{country}",
-                    oninput: move |evt| country.set(evt.value())
-                }
-            }
+            // State/Province
+            ui.horizontal(|ui| {
+                ui.label("State/Province:");
+                ui.add(egui::TextEdit::singleline(&mut app.state)
+                    .hint_text("Nordrhein-Westfalen")
+                    .desired_width(200.0));
+            });
 
-            div { class: "form-group",
-                label { "State/Province:" }
-                input {
-                    placeholder: "Nordrhein-Westfalen",
-                    value: "{state}",
-                    oninput: move |evt| state.set(evt.value())
-                }
-            }
+            // Locality
+            ui.horizontal(|ui| {
+                ui.label("Locality (city):");
+                ui.add(egui::TextEdit::singleline(&mut app.locality)
+                    .hint_text("Münster")
+                    .desired_width(200.0));
+            });
 
-            div { class: "form-group",
-                label { "Locality (city):" }
-                input {
-                    placeholder: "Münster",
-                    value: "{locality}",
-                    oninput: move |evt| locality.set(evt.value())
-                }
-            }
-
-            div { class: "form-group",
-                label { "Organization:" }
-                input {
-                    placeholder: "Test Inc.",
-                    value: "{organization}",
-                    oninput: move |evt| organization.set(evt.value())
-                }
-            }
+            // Organization
+            ui.horizontal(|ui| {
+                ui.label("Organization:");
+                ui.add(egui::TextEdit::singleline(&mut app.organization)
+                    .hint_text("Test Inc.")
+                    .desired_width(200.0));
+            });
 
             // Advanced mode fields
-            if advanced_mode() {
-                div { class: "form-group",
-                    label { "Organizational Unit (OU):" }
-                    input {
-                        placeholder: "IT Department",
-                        value: "{organizational_unit}",
-                        oninput: move |evt| organizational_unit.set(evt.value())
-                    }
-                }
+            if app.advanced_mode {
+                ui.add_space(5.0);
+                ui.label(egui::RichText::new("Advanced Options").strong());
+                ui.separator();
 
-                div { class: "form-group",
-                    label { "Email Address:" }
-                    input {
-                        type: "email",
-                        placeholder: "admin@example.com",
-                        value: "{email}",
-                        oninput: move |evt| email.set(evt.value())
-                    }
-                }
+                // Organizational Unit
+                ui.horizontal(|ui| {
+                    ui.label("Organizational Unit (OU):");
+                    ui.add(egui::TextEdit::singleline(&mut app.organizational_unit)
+                        .hint_text("IT Department")
+                        .desired_width(200.0));
+                });
 
-                div { class: "form-group",
-                    label { "Key Size:" }
-                    select {
-                        value: key_size,
-                        onchange: move |evt| key_size.set(evt.value()),
-                        option { value: "2048", "2048 bits" }
-                        option { value: "4096", "4096 bits" }
-                    }
-                }
+                // Email
+                ui.horizontal(|ui| {
+                    ui.label("Email Address:");
+                    ui.add(egui::TextEdit::singleline(&mut app.email)
+                        .hint_text("admin@example.com")
+                        .desired_width(200.0));
+                });
 
-                div { class: "form-group",
-                    label { "Hash Algorithm:" }
-                    select {
-                        value: hash_algorithm,
-                        onchange: move |evt| hash_algorithm.set(evt.value()),
-                        option { value: "sha256", "SHA-256" }
-                        option { value: "sha384", "SHA-384" }
-                        option { value: "sha512", "SHA-512" }
-                    }
-                }
+                // Street Address
+                ui.horizontal(|ui| {
+                    ui.label("Street Address:");
+                    ui.add(egui::TextEdit::singleline(&mut app.street_address)
+                        .hint_text("123 Main Street")
+                        .desired_width(200.0));
+                });
+
+                // Postal Code
+                ui.horizontal(|ui| {
+                    ui.label("Postal Code:");
+                    ui.add(egui::TextEdit::singleline(&mut app.postal_code)
+                        .hint_text("12345")
+                        .desired_width(200.0));
+                });
+
+                // Key Size
+                ui.horizontal(|ui| {
+                    ui.label("Key Size:");
+                    egui::ComboBox::from_id_salt("key_size")
+                        .selected_text(&app.key_size)
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(&mut app.key_size, "2048".to_string(), "2048 bits");
+                            ui.selectable_value(&mut app.key_size, "4096".to_string(), "4096 bits");
+                        });
+                });
+
+                // Hash Algorithm
+                ui.horizontal(|ui| {
+                    ui.label("Hash Algorithm:");
+                    egui::ComboBox::from_id_salt("hash_algo")
+                        .selected_text(&app.hash_algorithm)
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(&mut app.hash_algorithm, "sha256".to_string(), "SHA-256");
+                            ui.selectable_value(&mut app.hash_algorithm, "sha384".to_string(), "SHA-384");
+                            ui.selectable_value(&mut app.hash_algorithm, "sha512".to_string(), "SHA-512");
+                        });
+                });
+
+                ui.separator();
             }
 
-            div { class: "form-group",
-                label { "Common Name:" }
-                input {
-                    placeholder: "mail.test.org",
-                    value: "{common_name}",
-                    oninput: move |evt| {
-                        let new_cn = evt.value();
+            // Common Name
+            ui.horizontal(|ui| {
+                ui.label("Common Name:");
+                let response = ui.add(egui::TextEdit::singleline(&mut app.common_name)
+                    .hint_text("mail.test.org")
+                    .desired_width(200.0));
 
-                        // Update or add CN as first SAN
-                        let mut sans_vec = sans.read().clone();
-                        if !new_cn.is_empty() {
-                            if sans_vec.is_empty() {
-                                sans_vec.push(new_cn.clone());
-                            } else {
-                                sans_vec[0] = new_cn.clone();
-                            }
-                        } else if !sans_vec.is_empty() {
-                            // If CN is cleared, remove first SAN
-                            sans_vec.remove(0);
+                // Update or add CN as first SAN when it changes
+                if response.changed() {
+                    if !app.common_name.is_empty() {
+                        if app.sans.is_empty() {
+                            app.sans.push(app.common_name.clone());
+                        } else {
+                            app.sans[0] = app.common_name.clone();
                         }
-                        sans.set(sans_vec);
-
-                        common_name.set(new_cn);
+                    } else if !app.sans.is_empty() {
+                        app.sans.remove(0);
                     }
                 }
-            }
+            });
+
+            ui.add_space(5.0);
 
             // Subject Alternative Names section
-            div { class: "form-group",
-                label { "Subject Alternative Names:" }
-                div { class: "san-entry",
-                    input {
-                        placeholder: "Enter domain or IP (e.g. www.example.com)",
-                        value: "{current_san}",
-                        onkeypress: move |evt| {
-                            if evt.key() == "Enter".parse().unwrap() && !current_san.read().is_empty() {
-                                add_san();
-                            }
-                        },
-                        oninput: move |evt| current_san.set(evt.value())
-                    }
-                    button {
-                        class: "add-san-button",
-                        onclick: move |_| add_san(),
-                        "Add SAN"
+            ui.label(egui::RichText::new("Subject Alternative Names:").strong());
+
+            ui.horizontal(|ui| {
+                let response = ui.add(egui::TextEdit::singleline(&mut app.current_san)
+                    .hint_text("Enter domain or IP (e.g. www.example.com)")
+                    .desired_width(300.0));
+
+                // Handle Enter key
+                if response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                    if !app.current_san.is_empty() {
+                        app.sans.push(app.current_san.clone());
+                        app.current_san.clear();
                     }
                 }
-            }
 
-            // SAN list (shown only if there are SANs)
-            if !sans.read().is_empty() {
-                div { class: "sans-list",
-                    ul {
-                        for (i, san) in sans.read().iter().enumerate() {
-                            li {
-                                if san.parse::<std::net::IpAddr>().is_ok() {
-                                    span { class: "sans-list-icon", "🌐" }
+                if ui.button("Add SAN").clicked() && !app.current_san.is_empty() {
+                    app.sans.push(app.current_san.clone());
+                    app.current_san.clear();
+                }
+            });
+
+            // Display SAN list
+            if !app.sans.is_empty() {
+                ui.add_space(5.0);
+                egui::Frame::new()
+                    .inner_margin(5.0)
+                    .show(ui, |ui| {
+                        let mut to_remove = None;
+
+                        for (i, san) in app.sans.iter().enumerate() {
+                            ui.horizontal(|ui| {
+                                // Icon based on type
+                                let icon = if san.parse::<std::net::IpAddr>().is_ok() {
+                                    "IP"
                                 } else {
-                                    span { class: "sans-list-icon", "🔗" }
-                                }
-                                "{san}"
-                                // Show label for first SAN (which matches CN)
+                                    "DNS"
+                                };
+                                ui.label(format!("[{}]", icon));
+                                ui.label(san);
+
+                                // Show badge for first SAN (CN)
                                 if i == 0 {
-                                    span { class: "san-badge", "(from CN)" }
+                                    ui.label(egui::RichText::new("(from CN)").italics().weak());
                                 } else {
                                     // Only allow removing SANs after the first one
-                                    button {
-                                        class: "remove-san-button",
-                                        onclick: move |_| {
-                                            let mut sans_vec = sans.read().clone();
-                                            sans_vec.remove(i);
-                                            sans.set(sans_vec);
-                                        },
-                                        "Remove"
+                                    if ui.button("Remove").clicked() {
+                                        to_remove = Some(i);
                                     }
                                 }
-                            }
+                            });
                         }
-                    }
-                }
+
+                        if let Some(idx) = to_remove {
+                            app.sans.remove(idx);
+                        }
+                    });
             } else {
-                // Show a message when no SANs are added
-                div { class: "sans-list-empty",
-                    "No alternative names added yet"
-                }
+                ui.label(egui::RichText::new("No alternative names added yet").weak().italics());
             }
 
-            // Clear button - spans both columns
-            div { style: "width: 100%; margin-left: 1rem",
-                button {
-                    class: "secondary",
-                    style: "width: 100%;",
-                    onclick: move |_| on_clear.call(()),
-                    "Clear All Fields"
-                }
+            ui.add_space(10.0);
+
+            // Clear button
+            if ui.button("Clear All Fields").clicked() {
+                app.clear_form();
             }
-        }
-    }
+        });
 }

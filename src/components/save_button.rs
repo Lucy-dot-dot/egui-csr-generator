@@ -1,46 +1,23 @@
-use dioxus::prelude::*;
+use eframe::egui;
+use crate::CertGenApp;
 use super::generate_and_save;
 
-#[component]
-pub fn SaveButton(
-    config_content: Signal<String>,
-    common_name: Signal<String>,
-    key_content: Signal<String>,
-    csr_content: Signal<String>,
-) -> Element {
-    let mut is_generating = use_signal(|| false);
+pub fn render(ui: &mut egui::Ui, app: &mut CertGenApp) {
+    let button_text = "Save Certificate Files";
 
-    let generate_and_save_callback = move |_| {
-        is_generating.set(true);
-
+    if ui.button(button_text).clicked() {
         // Get file contents
-        let cnf = config_content.read().clone();
-        let name = common_name.read().clone();
-        let key = key_content.read().clone();
-        let csr = csr_content.read().clone();
+        let cnf = app.config_output.clone();
+        let name = app.common_name.clone();
+        let key = app.key_content.clone();
+        let csr = app.csr_content.clone();
+
         match generate_and_save(&cnf, &name, &key, &csr) {
-            Ok(_) => {}
-            Err(err) => {
-                eprintln!("{}", err);
+            Ok(_) => {
+                log::info!("Certificate files saved successfully");
             }
-        }
-        
-        is_generating.set(false);
-    };
-
-    rsx! {
-        button {
-            class: "save-button",
-            class: "secondary",
-            disabled: is_generating(),
-            onclick: generate_and_save_callback,
-
-            if is_generating() {
-                span { class: "save-spinner" }
-                "Generating files..."
-            } else {
-                span { class: "save-icon", "💾" }
-                "Save Certificate Files"
+            Err(err) => {
+                log::error!("Failed to save certificate files: {}", err);
             }
         }
     }
