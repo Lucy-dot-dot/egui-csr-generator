@@ -1,0 +1,49 @@
+/* Download/Save Button Styles */
+.save-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    background-color: #8b5cf6; /* Purple */
+    color: #ffffff;
+    border: none;
+    transition: all 0.2s ease;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.save-button:hover {
+    background-color: #7c3aed;
+    transform: translateY(-1px);
+    box-shadow: 0 6px 10px rgba(0, 0, 0, 0.2);
+}
+
+.save-button:active {
+    transform: translateY(1px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.save-button:disabled {
+    background-color: #6b7280;
+    cursor: not-allowed;
+    transform: none;
+    opacity: 0.7;
+}
+
+.save-icon {
+    font-size: 1.25rem;
+}
+
+/* Spinner Animation */
+.save-spinner {
+    display: inline-block;
+    width: 1.25rem;
+    height: 1.25rem;
+    border: 3px solid rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    border-top-color: white;
+    animation: spin 1s ease-in-out infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
