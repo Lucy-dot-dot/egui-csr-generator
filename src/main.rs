@@ -16,6 +16,7 @@ use components::form;
 use components::openssloutput;
 use components::execute_button;
 use components::save_button;
+use crate::openssl_cert_tools::sanitize;
 
 fn setup_logger() {
     let current_time = time::OffsetDateTime::now_local().unwrap_or(time::OffsetDateTime::now_utc());
@@ -245,23 +246,19 @@ impl CertGenApp {
         let fake_company: String = fake::faker::company::de_de::CompanyName().fake();
         let fake_domain = format!(
             "{}.{}",
-            enLastName()
-                .fake::<String>()
-                .replace(" ", "_")
-                .replace("'", "_")
-                .to_ascii_lowercase(),
+            sanitize(enLastName().fake::<&str>()).to_ascii_lowercase(),
             DomainSuffix().fake::<&str>()
         );
         let fake_state: String = fake::faker::address::de_de::StateName().fake();
         let fake_locality: String = fake::faker::address::de_de::CityName().fake();
 
         // Generate email with firstname.lastname@domain
-        let first_name: String = FirstName().fake();
-        let last_name: String = LastName().fake();
+        let first_name: String = sanitize(FirstName().fake());
+        let last_name: String = sanitize(LastName().fake());
         let fake_email = format!(
             "{}.{}@{}",
-            first_name.replace(" ", "").replace("ß", "ss").to_ascii_lowercase(),
-            last_name.replace(" ", "").replace("ß", "ss").to_ascii_lowercase(),
+            first_name.to_ascii_lowercase(),
+            last_name.to_ascii_lowercase(),
             fake_domain.clone()
         );
 
@@ -273,7 +270,7 @@ impl CertGenApp {
             if fake::rand::random_bool(0.2) {
                 san_list.push(format!("{}", IP().fake::<String>()));
             } else {
-                let subdomain = fake::faker::company::en::BsNoun().fake::<String>().replace(" ", "_");
+                let subdomain = sanitize(fake::faker::company::en::BsNoun().fake::<&str>()).to_ascii_lowercase();
                 san_list.push(format!("{}.{}", subdomain, fake_domain));
 
             }

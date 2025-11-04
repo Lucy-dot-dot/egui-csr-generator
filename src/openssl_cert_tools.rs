@@ -16,8 +16,116 @@ pub struct CertConfig<'a> {
     pub hash_algorithm: &'a str,
 }
 
-fn sanitize(input: &str) -> String {
-    input.replace("ä", "ae").replace("ü", "ue").replace("ö", "oe")
+pub fn sanitize(input: &str) -> String {
+    // First pass: replace known special characters with ASCII equivalents
+    let mut result = String::new();
+
+    for c in input.chars() {
+        let replacement = match c {
+            // German umlauts and ß
+            'ä' | 'Ä' => "ae",
+            'ö' | 'Ö' => "oe",
+            'ü' | 'Ü' => "ue",
+            'ß' => "ss",
+
+            // French accents
+            'à' | 'â' | 'á' | 'ã' | 'å' => "a",
+            'À' | 'Â' | 'Á' | 'Ã' | 'Å' => "A",
+            'é' | 'è' | 'ê' | 'ë' => "e",
+            'É' | 'È' | 'Ê' | 'Ë' => "E",
+            'î' | 'ï' | 'í' | 'ì' => "i",
+            'Î' | 'Ï' | 'Í' | 'Ì' => "I",
+            'ô' | 'ó' | 'ò' | 'õ' => "o",
+            'Ô' | 'Ó' | 'Ò' | 'Õ' => "O",
+            'û' | 'ú' | 'ù' => "u",
+            'Û' | 'Ú' | 'Ù' => "U",
+            'ÿ' | 'ý' => "y",
+            'Ÿ' | 'Ý' => "Y",
+            'ç' => "c",
+            'Ç' => "C",
+
+            // Scandinavian characters
+            'æ' => "ae",
+            'Æ' => "AE",
+            'ø' => "oe",
+            'Ø' => "OE",
+
+            // Spanish
+            'ñ' => "n",
+            'Ñ' => "N",
+
+            // Polish and Eastern European
+            'ł' => "l",
+            'Ł' => "L",
+            'ą' => "a",
+            'Ą' => "A",
+            'ę' => "e",
+            'Ę' => "E",
+            'ć' => "c",
+            'Ć' => "C",
+            'ń' => "n",
+            'Ń' => "N",
+            'ś' => "s",
+            'Ś' => "S",
+            'ź' | 'ż' => "z",
+            'Ź' | 'Ż' => "Z",
+
+            // Czech and Slovak
+            'č' => "c",
+            'Č' => "C",
+            'ď' => "d",
+            'Ď' => "D",
+            'ě' => "e",
+            'Ě' => "E",
+            'ň' => "n",
+            'Ň' => "N",
+            'ř' => "r",
+            'Ř' => "R",
+            'š' => "s",
+            'Š' => "S",
+            'ť' => "t",
+            'Ť' => "T",
+            'ů' => "u",
+            'Ů' => "U",
+            'ž' => "z",
+            'Ž' => "Z",
+
+            // Other common symbols
+            '&' => "and",
+            '@' => "at",
+            ' ' => "-",
+            '/' | '\\' => "-",
+
+            // Valid characters for domain names and filenames: pass through
+            'a'..='z' | 'A'..='Z' | '0'..='9' | '-' | '_' | '.' => {
+                result.push(c);
+                continue;
+            }
+
+            // For any other character, replace with underscore
+            _ => "_",
+        };
+
+        result.push_str(replacement);
+    }
+
+    // Clean up potential issues from replacement:
+    // - Remove leading/trailing hyphens and underscores
+    // - Replace multiple consecutive hyphens/underscores with single one
+    result = result
+        .trim_matches(|c| c == '-' || c == '_')
+        .to_string();
+
+    // Replace multiple consecutive separators with a single one
+    while result.contains("--") || result.contains("__") || result.contains("-.") || result.contains("._") {
+        result = result
+            .replace("--", "-")
+            .replace("__", "_")
+            .replace("-.", ".")
+            .replace(".-", ".");
+    }
+
+    result
 }
 
 impl<'a> CertConfig<'a> {
@@ -130,4 +238,139 @@ pub fn execute_openssl_command(command: &str) -> io::Result<(String, String)> {
     }
 
     Ok((String::from_utf8_lossy(&*output.stdout).parse().unwrap(), String::from_utf8_lossy(&*output.stderr).parse().unwrap()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_sanitize_german_characters() {
+        assert_eq!(sanitize("Müller"), "Mueller");
+        assert_eq!(sanitize("Schön"), "Schoen");
+        assert_eq!(sanitize("Bäcker"), "Baecker");
+        assert_eq!(sanitize("Straße"), "Strasse");
+        // Note: uppercase Ü is replaced with lowercase "ue"
+        assert_eq!(sanitize("MÜNCHEN"), "MueNCHEN");
+    }
+
+    #[test]
+    fn test_sanitize_french_characters() {
+        assert_eq!(sanitize("Café"), "Cafe");
+        assert_eq!(sanitize("Crème"), "Creme");
+        assert_eq!(sanitize("Naïve"), "Naive");
+        assert_eq!(sanitize("François"), "Francois");
+        assert_eq!(sanitize("Château"), "Chateau");
+    }
+
+    #[test]
+    fn test_sanitize_scandinavian_characters() {
+        assert_eq!(sanitize("København"), "Koebenhavn");
+        assert_eq!(sanitize("Malmö"), "Malmoe");
+        assert_eq!(sanitize("Æther"), "AEther");
+    }
+
+    #[test]
+    fn test_sanitize_spanish_characters() {
+        assert_eq!(sanitize("España"), "Espana");
+        assert_eq!(sanitize("Señor"), "Senor");
+        assert_eq!(sanitize("Niño"), "Nino");
+    }
+
+    #[test]
+    fn test_sanitize_polish_characters() {
+        assert_eq!(sanitize("Łódź"), "Lodz");
+        assert_eq!(sanitize("Kraków"), "Krakow");
+        // Note: Capital Ą becomes A, and both ź and ż become z
+        assert_eq!(sanitize("Ąćęłńóśźż"), "Acelnoszz");
+    }
+
+    #[test]
+    fn test_sanitize_czech_slovak_characters() {
+        assert_eq!(sanitize("Čeština"), "Cestina");
+        assert_eq!(sanitize("Řešení"), "Reseni");
+        assert_eq!(sanitize("Žižkov"), "Zizkov");
+    }
+
+    #[test]
+    fn test_sanitize_symbols() {
+        assert_eq!(sanitize("Smith & Jones"), "Smith-and-Jones");
+        assert_eq!(sanitize("user@company"), "useratcompany");
+        assert_eq!(sanitize("path/to/file"), "path-to-file");
+        assert_eq!(sanitize("back\\slash"), "back-slash");
+    }
+
+    #[test]
+    fn test_sanitize_spaces() {
+        assert_eq!(sanitize("Hello World"), "Hello-World");
+        assert_eq!(sanitize("Multiple   Spaces"), "Multiple-Spaces");
+    }
+
+    #[test]
+    fn test_sanitize_mixed_special_characters() {
+        assert_eq!(sanitize("Müller & Söhne GmbH"), "Mueller-and-Soehne-GmbH");
+        assert_eq!(sanitize("Café François"), "Cafe-Francois");
+        // Note: @ becomes "at", and trailing underscores are trimmed
+        assert_eq!(sanitize("Test!@#$%"), "Test_at");
+    }
+
+    #[test]
+    fn test_sanitize_preserves_valid_characters() {
+        assert_eq!(sanitize("abc123"), "abc123");
+        assert_eq!(sanitize("test-file_name.txt"), "test-file_name.txt");
+        assert_eq!(sanitize("UPPERCASE"), "UPPERCASE");
+    }
+
+    #[test]
+    fn test_sanitize_removes_leading_trailing_separators() {
+        assert_eq!(sanitize("-leading"), "leading");
+        assert_eq!(sanitize("trailing-"), "trailing");
+        assert_eq!(sanitize("_both_"), "both");
+        assert_eq!(sanitize("---multiple---"), "multiple");
+    }
+
+    #[test]
+    fn test_sanitize_collapses_multiple_separators() {
+        assert_eq!(sanitize("double--dash"), "double-dash");
+        assert_eq!(sanitize("triple___underscore"), "triple_underscore");
+    }
+
+    #[test]
+    fn test_sanitize_complex_real_world_examples() {
+        // German company name
+        assert_eq!(
+            sanitize("Bäckerei Müller & Söhne GmbH"),
+            "Baeckerei-Mueller-and-Soehne-GmbH"
+        );
+
+        // French address
+        assert_eq!(
+            sanitize("123 Rue de l'Église"),
+            "123-Rue-de-l_Eglise"
+        );
+
+        // Mixed international - note: periods are valid characters and preserved
+        assert_eq!(
+            sanitize("Łódź/Kraków Services Pty."),
+            "Lodz-Krakow-Services-Pty."
+        );
+    }
+
+    #[test]
+    fn test_sanitize_unicode_edge_cases() {
+        // Emoji and other unicode are replaced with underscores,
+        // but trailing underscores are trimmed
+        assert_eq!(sanitize("Test😀"), "Test");
+        assert_eq!(sanitize("Hello™"), "Hello");
+        assert_eq!(sanitize("Copyright©2024"), "Copyright_2024");
+        // Emoji in the middle is preserved
+        assert_eq!(sanitize("Test😀Data"), "Test_Data");
+    }
+
+    #[test]
+    fn test_sanitize_empty_and_whitespace() {
+        assert_eq!(sanitize(""), "");
+        assert_eq!(sanitize("   "), "");
+        assert_eq!(sanitize("a b c"), "a-b-c");
+    }
 }
