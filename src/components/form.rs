@@ -12,6 +12,7 @@ pub fn render(ui: &mut egui::Ui, app: &mut CertGenApp) {
                 ui.label("");
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.checkbox(&mut app.advanced_mode, "Advanced");
+                    #[cfg(feature = "openssl-native")]
                     if app.advanced_mode {
                         ui.checkbox(&mut app.internal_generate, "Internal Generate");
                     }

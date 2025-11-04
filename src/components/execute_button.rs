@@ -2,7 +2,11 @@ use eframe::egui;
 use std::fs::File;
 use std::io::Write;
 use crate::CertGenApp;
-use crate::openssl_cert_tools::{execute_openssl_command, generate_cert_request, CertConfig};
+#[cfg(feature = "openssl-native")]
+use crate::cert_config::CertConfig;
+use crate::openssl_cli::execute_openssl_command;
+#[cfg(feature = "openssl-native")]
+use crate::openssl_native::generate_cert_request;
 use crate::components::generate_and_save;
 
 pub fn render(ui: &mut egui::Ui, app: &mut CertGenApp) {
@@ -11,9 +15,16 @@ pub fn render(ui: &mut egui::Ui, app: &mut CertGenApp) {
             if app.is_executing {
                 "Processing..."
             } else {
-                if app.advanced_mode && app.internal_generate {
-                    "Use internal OpenSSL library to generate certificate request"
-                } else {
+                #[cfg(feature = "openssl-native")]
+                {
+                    if app.advanced_mode && app.internal_generate {
+                        "Use internal OpenSSL library to generate certificate request"
+                    } else {
+                        "Execute OpenSSL Command"
+                    }
+                }
+                #[cfg(not(feature = "openssl-native"))]
+                {
                     "Execute OpenSSL Command"
                 }
             }
@@ -27,48 +38,54 @@ pub fn render(ui: &mut egui::Ui, app: &mut CertGenApp) {
 
 fn execute(app: &mut CertGenApp) {
     app.is_executing = true;
-    if app.advanced_mode && app.internal_generate {
-        let file_common_name = if app.common_name.starts_with("*.") {
-            app.common_name.replacen("*.", "wildcard.", 1)
-        } else {
-            app.common_name.clone()
-        };
 
-        // Build config struct
-        let config = CertConfig::from(&*app);
-        // Generate cert using OpenSSL library
-        match generate_cert_request(&config) {
-            Ok(cert) => {
-                app.key_content = cert.key_pem;
-                app.csr_content = cert.csr_pem;
-                app.openssl_output.push_str("Certificate request generated successfully!\n");
+    let use_native = cfg!(feature = "openssl-native") && app.advanced_mode && app.internal_generate;
 
-                // Auto-save
-                if !app.key_content.is_empty() && !app.csr_content.is_empty() {
-                    match generate_and_save(
-                        &app.config_output,
-                        &file_common_name,
-                        &app.key_content,
-                        &app.csr_content,
-                    ) {
-                        Ok(_) => {
-                            app.openssl_output.push_str("Auto saved zip to downloads folder\n");
-                            let openssl_for_zip = format!(
-                                "openssl req -new -out {}.csr -config {}.cnf",
-                                file_common_name, file_common_name
-                            );
-                            app.openssl_output.push_str(&format!("Use this command to recreate the csr: {}\n", openssl_for_zip));
-                        }
-                        Err(err) => {
-                            log::error!("{}", err);
-                            app.openssl_output.push_str(&format!("Failed to auto save generated zip: {}\n", err));
+    if use_native {
+        #[cfg(feature = "openssl-native")]
+        {
+            let file_common_name = if app.common_name.starts_with("*.") {
+                app.common_name.replacen("*.", "wildcard.", 1)
+            } else {
+                app.common_name.clone()
+            };
+
+            // Build config struct
+            let config = CertConfig::from(&*app);
+            // Generate cert using OpenSSL library
+            match generate_cert_request(&config) {
+                Ok(cert) => {
+                    app.key_content = cert.key_pem;
+                    app.csr_content = cert.csr_pem;
+                    app.openssl_output.push_str("Certificate request generated successfully!\n");
+
+                    // Auto-save
+                    if !app.key_content.is_empty() && !app.csr_content.is_empty() {
+                        match generate_and_save(
+                            &app.config_output,
+                            &file_common_name,
+                            &app.key_content,
+                            &app.csr_content,
+                        ) {
+                            Ok(_) => {
+                                app.openssl_output.push_str("Auto saved zip to downloads folder\n");
+                                let openssl_for_zip = format!(
+                                    "openssl req -new -out {}.csr -config {}.cnf",
+                                    file_common_name, file_common_name
+                                );
+                                app.openssl_output.push_str(&format!("Use this command to recreate the csr: {}\n", openssl_for_zip));
+                            }
+                            Err(err) => {
+                                log::error!("{}", err);
+                                app.openssl_output.push_str(&format!("Failed to auto save generated zip: {}\n", err));
+                            }
                         }
                     }
                 }
-            }
-            Err(err) => {
-                log::error!("Failed to generate certificate: {}", err);
-                app.openssl_output.push_str(&format!("Failed to generate certificate: {}\n", err));
+                Err(err) => {
+                    log::error!("Failed to generate certificate: {}", err);
+                    app.openssl_output.push_str(&format!("Failed to generate certificate: {}\n", err));
+                }
             }
         }
     } else {

@@ -7,16 +7,19 @@ use eframe::{egui, CreationContext};
 #[cfg(debug_assertions)]
 use fake::{Fake, Rng};
 use log::LevelFilter;
-use openssl_cert_tools::CertConfig;
+use cert_config::CertConfig;
 
 mod components;
-mod openssl_cert_tools;
+mod cert_config;
+mod openssl_cli;
+#[cfg(feature = "openssl-native")]
+mod openssl_native;
 
 use components::form;
 use components::openssloutput;
 use components::execute_button;
 use components::save_button;
-use crate::openssl_cert_tools::sanitize;
+use crate::cert_config::sanitize;
 
 fn setup_logger() {
     let current_time = time::OffsetDateTime::now_local().unwrap_or(time::OffsetDateTime::now_utc());
