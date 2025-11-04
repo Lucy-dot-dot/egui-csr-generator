@@ -4,6 +4,7 @@ use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::sync::Arc;
 use eframe::{egui, CreationContext};
+#[cfg(debug_assertions)]
 use fake::{Fake, Rng};
 use log::LevelFilter;
 use openssl_cert_tools::CertConfig;
