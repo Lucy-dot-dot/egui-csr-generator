@@ -1,6 +1,6 @@
 # OpenSSL Certificate Generator
 
-A desktop application built with Dioxus that provides a graphical interface for generating OpenSSL certificate signing requests (CSRs). The application simplifies the process of creating certificate configurations, executing OpenSSL commands, and packaging certificate files.
+A desktop application built with egui/eframe that provides a graphical interface for generating OpenSSL certificate signing requests (CSRs). The application simplifies the process of creating certificate configurations, executing OpenSSL commands, and packaging certificate files.
 
 ## Features
 
@@ -18,8 +18,6 @@ A desktop application built with Dioxus that provides a graphical interface for 
 
 - Rust (latest stable version)
 - OpenSSL installed and available in system PATH
-- Dioxus CLI (`dx`)
-- Node.js and npm (optional, for Tailwind CSS development)
 
 ## Installation
 
@@ -29,12 +27,7 @@ git clone <repository-url>
 cd openssl-cert-dioxius
 ```
 
-2. Install Dioxus CLI if not already installed:
-```bash
-cargo install dioxus-cli
-```
-
-3. Build the project:
+2. Build the project:
 ```bash
 cargo build --release
 ```
@@ -43,9 +36,14 @@ cargo build --release
 
 ### Running the Application
 
-Start the development server:
+Run the application in development mode:
 ```bash
-dx serve --platform desktop
+cargo run
+```
+
+Or run the release build:
+```bash
+cargo run --release
 ```
 
 ### Creating a Certificate Request
@@ -80,24 +78,16 @@ dx serve --platform desktop
 cargo build --release
 ```
 
-The compiled binary will be available in `target/release/`
+The compiled binary will be available in `target/release/openssl-certificate-request-generator` (or `.exe` on Windows)
 
 ## Project Structure
 
 ```
 openssl-cert-dioxius/
 ├── src/
-│   ├── main.rs                    # Entry point and main App component
-│   ├── openssl_cert_tools.rs      # Core certificate logic and OpenSSL integration
-│   └── components/
-│       ├── mod.rs                 # Module exports and zip generation
-│       ├── form.rs                # Input form component
-│       ├── execute_button.rs      # OpenSSL execution handler
-│       ├── save_button.rs         # Manual save functionality
-│       └── openssloutput.rs       # Output display component
-├── assets/                        # CSS and font files
-├── Cargo.toml                     # Rust dependencies and features
-├── Dioxus.toml                    # Dioxus configuration
+│   ├── main.rs                    # Entry point and egui App implementation
+│   └── openssl_cert_tools.rs      # Core certificate logic and OpenSSL integration
+├── Cargo.toml                     # Rust dependencies
 └── README.md
 ```
 
@@ -105,7 +95,7 @@ openssl-cert-dioxius/
 
 ### Core Modules
 
-- **main.rs**: Entry point containing UI layout, form state management, and primary event handlers
+- **main.rs**: Entry point containing egui UI implementation, form state management, and event handlers
 - **openssl_cert_tools.rs**: Certificate logic including:
   - `CertConfig`: Certificate metadata and config file generation
   - `generate_config()`: Creates OpenSSL .cnf files with SAN support
@@ -114,17 +104,20 @@ openssl-cert-dioxius/
 
 ### Key Dependencies
 
-- **dioxus 0.6.3**: Desktop UI framework
-- **fake**: Test data generation (debug mode only)
-- **zip**: Certificate file bundling
-- **dirs**: Downloads directory location
+- **egui 0.33.0**: Immediate mode GUI framework
+- **eframe 0.33.0**: egui framework for native applications
+- **zip 6.0.0**: Certificate file bundling
+- **dirs 6.0.0**: Downloads directory location
+- **fake 4.0.0**: Test data generation (debug mode only)
+- **log 0.4.28** & **env_logger 0.11.8**: Logging infrastructure
+- **time 0.3.44**: Time handling and formatting
 
 ### Application Flow
 
-1. User fills in certificate details through the Form component
-2. "Generate Configuration" validates input and creates OpenSSL config string
+1. User fills in certificate details through the egui form interface
+2. "Generate Configuration" validates input (especially 2-char country code) and creates OpenSSL config string
 3. "Execute OpenSSL Command" writes temp config file, executes `openssl req -new`, captures output, saves zip to downloads folder, and cleans up temp files
-4. Output is displayed in the OpenSSLOutput component
+4. Output is displayed in the application's output area
 
 ## License
 
