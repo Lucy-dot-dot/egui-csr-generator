@@ -47,7 +47,8 @@ fn main() -> eframe::Result {
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([800.0, 700.0])
+            .with_min_inner_size([800.0, 700.0])
+            .with_inner_size([800.0, 800.0])
             .with_title("OpenSSL Certificate Request Generator"),
         ..Default::default()
     };
@@ -84,6 +85,7 @@ pub struct CertGenApp {
     pub key_content: String,
     pub csr_content: String,
     pub is_executing: bool,
+    pub internal_generate: bool
 }
 
 impl CertGenApp {
@@ -121,6 +123,7 @@ impl CertGenApp {
             key_content: String::new(),
             csr_content: String::new(),
             is_executing: false,
+            internal_generate: false
         }
     }
 
@@ -159,45 +162,7 @@ impl CertGenApp {
             return;
         }
 
-        let ou_opt = if self.organizational_unit.trim().is_empty() {
-            None
-        } else {
-            Some(self.organizational_unit.as_str())
-        };
-
-        let email_opt = if self.email.trim().is_empty() {
-            None
-        } else {
-            Some(self.email.as_str())
-        };
-
-        let street_opt = if self.street_address.trim().is_empty() {
-            None
-        } else {
-            Some(self.street_address.as_str())
-        };
-
-        let postal_opt = if self.postal_code.trim().is_empty() {
-            None
-        } else {
-            Some(self.postal_code.as_str())
-        };
-
-        let config = CertConfig {
-            country: &self.country,
-            state: &self.state,
-            locality: &self.locality,
-            organization: &self.organization,
-            organizational_unit: ou_opt,
-            email: email_opt,
-            street_address: street_opt,
-            postal_code: postal_opt,
-            common_name: &self.common_name,
-            san: &self.sans,
-            key_size: &self.key_size,
-            hash_algorithm: &self.hash_algorithm,
-        }
-        .generate_config();
+        let config = CertConfig::from(&*self).generate_config();
 
         match config {
             Ok(config_text) => {

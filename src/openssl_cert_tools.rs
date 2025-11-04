@@ -1,5 +1,18 @@
+use openssl::pkey::PKey;
+use openssl::rsa::Rsa;
+use openssl::x509::{X509Req, X509Name};
+use openssl::x509::extension::SubjectAlternativeName;
+use openssl::hash::MessageDigest;
+use openssl::nid::Nid;
+use openssl::stack::Stack;
 use std::io;
 use std::process::{Command, Stdio};
+use crate::CertGenApp;
+
+pub struct GeneratedCert {
+    pub key_pem: String,
+    pub csr_pem: String,
+}
 
 pub struct CertConfig<'a> {
     pub country: &'a str,
@@ -16,7 +29,43 @@ pub struct CertConfig<'a> {
     pub hash_algorithm: &'a str,
 }
 
+impl<'a> From<&'a CertGenApp> for CertConfig<'a> {
+    fn from(value: &'a CertGenApp) -> Self {
+        CertConfig {
+            country: &value.country,
+            state: &value.state,
+            locality: &value.locality,
+            organization: &value.organization,
+            organizational_unit: if value.organizational_unit.is_empty() { None } else { Some(&value.organizational_unit) },
+            email: if value.email.is_empty() { None } else { Some(&value.email) },
+            street_address: if value.street_address.is_empty() { None } else { Some(&value.street_address) },
+            postal_code: if value.postal_code.is_empty() { None } else { Some(&value.postal_code) },
+            common_name: &value.common_name,
+            san: &value.sans,
+            key_size: &value.key_size,
+            hash_algorithm: &value.hash_algorithm,
+        }
+    }
+}
+
+
+/// Sanitizes input for use in filenames and domain names
+/// - Replaces special characters with ASCII equivalents
+/// - Converts spaces to hyphens
+/// - Removes/replaces characters not valid for domain names
 pub fn sanitize(input: &str) -> String {
+    sanitize_internal(input, false)
+}
+
+/// Sanitizes input for use in certificate Distinguished Name fields
+/// - Replaces special characters with ASCII equivalents
+/// - PRESERVES spaces (doesn't convert them to hyphens)
+/// - Removes/replaces other invalid characters
+pub fn sanitize_for_cert_field(input: &str) -> String {
+    sanitize_internal(input, true)
+}
+
+fn sanitize_internal(input: &str, preserve_spaces: bool) -> String {
     // First pass: replace known special characters with ASCII equivalents
     let mut result = String::new();
 
@@ -90,10 +139,19 @@ pub fn sanitize(input: &str) -> String {
             'ž' => "z",
             'Ž' => "Z",
 
+            // Space handling - conditional based on mode
+            ' ' => {
+                if preserve_spaces {
+                    result.push(' ');
+                    continue;
+                } else {
+                    "-"
+                }
+            }
+
             // Other common symbols
             '&' => "and",
             '@' => "at",
-            ' ' => "-",
             '/' | '\\' => "-",
 
             // Valid characters for domain names and filenames: pass through
@@ -110,19 +168,26 @@ pub fn sanitize(input: &str) -> String {
     }
 
     // Clean up potential issues from replacement:
-    // - Remove leading/trailing hyphens and underscores
-    // - Replace multiple consecutive hyphens/underscores with single one
-    result = result
-        .trim_matches(|c| c == '-' || c == '_')
-        .to_string();
-
-    // Replace multiple consecutive separators with a single one
-    while result.contains("--") || result.contains("__") || result.contains("-.") || result.contains("._") {
+    if preserve_spaces {
+        // For cert fields: trim leading/trailing spaces and underscores, collapse multiple spaces
+        result = result.trim().to_string();
+        while result.contains("  ") {
+            result = result.replace("  ", " ");
+        }
+    } else {
+        // For filenames: remove leading/trailing hyphens and underscores
         result = result
-            .replace("--", "-")
-            .replace("__", "_")
-            .replace("-.", ".")
-            .replace(".-", ".");
+            .trim_matches(|c| c == '-' || c == '_')
+            .to_string();
+
+        // Replace multiple consecutive separators with a single one
+        while result.contains("--") || result.contains("__") || result.contains("-.") || result.contains("._") {
+            result = result
+                .replace("--", "-")
+                .replace("__", "_")
+                .replace("-.", ".")
+                .replace(".-", ".");
+        }
     }
 
     result
@@ -161,13 +226,13 @@ impl<'a> CertConfig<'a> {
         // Distinguished name section
         config_content.push_str("\n[req_distinguished_name]\n");
         config_content.push_str(&format!("C = {}\n", self.country));
-        config_content.push_str(&format!("ST = {}\n", sanitize(self.state)));
-        config_content.push_str(&format!("L = {}\n", sanitize(self.locality)));
+        config_content.push_str(&format!("ST = {}\n", sanitize_for_cert_field(self.state)));
+        config_content.push_str(&format!("L = {}\n", sanitize_for_cert_field(self.locality)));
 
         // Optional street address and postal code
         if let Some(street) = self.street_address {
             if !street.trim().is_empty() {
-                config_content.push_str(&format!("street = {}\n", sanitize(street)));
+                config_content.push_str(&format!("street = {}\n", sanitize_for_cert_field(street)));
             }
         }
 
@@ -177,12 +242,12 @@ impl<'a> CertConfig<'a> {
             }
         }
 
-        config_content.push_str(&format!("O = {}\n", sanitize(self.organization)));
+        config_content.push_str(&format!("O = {}\n", sanitize_for_cert_field(self.organization)));
 
         // Optional OU
         if let Some(ou) = self.organizational_unit {
             if !ou.trim().is_empty() {
-                config_content.push_str(&format!("OU = {}\n", sanitize(ou)));
+                config_content.push_str(&format!("OU = {}\n", sanitize_for_cert_field(ou)));
             }
         }
 
@@ -238,6 +303,127 @@ pub fn execute_openssl_command(command: &str) -> io::Result<(String, String)> {
     }
 
     Ok((String::from_utf8_lossy(&*output.stdout).parse().unwrap(), String::from_utf8_lossy(&*output.stderr).parse().unwrap()))
+}
+
+pub fn generate_cert_request(config: &CertConfig) -> io::Result<GeneratedCert> {
+    // 1. Generate RSA key
+    let key_size: u32 = config.key_size.parse()
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "Invalid key size"))?;
+
+    let rsa = Rsa::generate(key_size)
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("RSA generation failed: {}", e)))?;
+
+    let pkey = PKey::from_rsa(rsa)
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("PKey creation failed: {}", e)))?;
+
+    // 2. Create X509 Name (Distinguished Name)
+    let mut name_builder = X509Name::builder()
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("Name builder failed: {}", e)))?;
+
+    name_builder.append_entry_by_nid(Nid::COUNTRYNAME, config.country)
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+
+    name_builder.append_entry_by_nid(Nid::STATEORPROVINCENAME, &sanitize_for_cert_field(config.state))
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+
+    name_builder.append_entry_by_nid(Nid::LOCALITYNAME, &sanitize_for_cert_field(config.locality))
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+
+    name_builder.append_entry_by_nid(Nid::ORGANIZATIONNAME, &sanitize_for_cert_field(config.organization))
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+
+    // Optional fields
+    if let Some(street) = config.street_address {
+        if !street.trim().is_empty() {
+            name_builder.append_entry_by_nid(Nid::STREETADDRESS, &sanitize_for_cert_field(street))
+                .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+        }
+    }
+
+    if let Some(postal) = config.postal_code {
+        if !postal.trim().is_empty() {
+            name_builder.append_entry_by_nid(Nid::POSTALCODE, postal)
+                .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+        }
+    }
+
+    if let Some(ou) = config.organizational_unit {
+        if !ou.trim().is_empty() {
+            name_builder.append_entry_by_nid(Nid::ORGANIZATIONALUNITNAME, &sanitize_for_cert_field(ou))
+                .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+        }
+    }
+
+    name_builder.append_entry_by_nid(Nid::COMMONNAME, config.common_name)
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+
+    if let Some(email) = config.email {
+        if !email.trim().is_empty() {
+            name_builder.append_entry_by_nid(Nid::PKCS9_EMAILADDRESS, email)
+                .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+        }
+    }
+
+    let name = name_builder.build();
+
+    // 3. Create Certificate Signing Request
+    let mut req_builder = X509Req::builder()
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("CSR builder failed: {}", e)))?;
+
+    req_builder.set_subject_name(&name)
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+
+    req_builder.set_pubkey(&pkey)
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+
+    // 4. Add SANs if present
+    if !config.san.is_empty() {
+        let mut san_builder = SubjectAlternativeName::new();
+
+        for san in config.san.iter() {
+            if san.parse::<std::net::IpAddr>().is_ok() {
+                san_builder.ip(san);
+            } else {
+                san_builder.dns(san);
+            }
+        }
+
+        let san_extension = san_builder.build(&req_builder.x509v3_context(None))
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("SAN extension failed: {}", e)))?;
+
+        let mut stack = Stack::new()
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+        stack.push(san_extension)
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+
+        req_builder.add_extensions(&stack)
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+    }
+
+    // 5. Sign the request
+    let hash_algo = match config.hash_algorithm {
+        "sha256" => MessageDigest::sha256(),
+        "sha384" => MessageDigest::sha384(),
+        "sha512" => MessageDigest::sha512(),
+        _ => MessageDigest::sha256(),
+    };
+
+    req_builder.sign(&pkey, hash_algo)
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("Signing failed: {}", e)))?;
+
+    let req = req_builder.build();
+
+    // 6. Export to PEM
+    let key_pem = pkey.private_key_to_pem_pkcs8()
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("Key PEM export failed: {}", e)))?;
+
+    let csr_pem = req.to_pem()
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("CSR PEM export failed: {}", e)))?;
+
+    Ok(GeneratedCert {
+        key_pem: String::from_utf8_lossy(&key_pem).to_string(),
+        csr_pem: String::from_utf8_lossy(&csr_pem).to_string(),
+    })
 }
 
 #[cfg(test)]
@@ -372,5 +558,42 @@ mod tests {
         assert_eq!(sanitize(""), "");
         assert_eq!(sanitize("   "), "");
         assert_eq!(sanitize("a b c"), "a-b-c");
+    }
+
+    // Tests for sanitize_for_cert_field (preserves spaces)
+    #[test]
+    fn test_sanitize_cert_field_preserves_spaces() {
+        assert_eq!(sanitize_for_cert_field("Hello World"), "Hello World");
+        assert_eq!(sanitize_for_cert_field("New York"), "New York");
+        assert_eq!(sanitize_for_cert_field("San Francisco Bay Area"), "San Francisco Bay Area");
+    }
+
+    #[test]
+    fn test_sanitize_cert_field_german_with_spaces() {
+        assert_eq!(sanitize_for_cert_field("Müller & Söhne GmbH"), "Mueller and Soehne GmbH");
+        assert_eq!(sanitize_for_cert_field("Stadt München"), "Stadt Muenchen");
+    }
+
+    #[test]
+    fn test_sanitize_cert_field_collapses_multiple_spaces() {
+        assert_eq!(sanitize_for_cert_field("Too    Many   Spaces"), "Too Many Spaces");
+        assert_eq!(sanitize_for_cert_field("  Leading and trailing  "), "Leading and trailing");
+    }
+
+    #[test]
+    fn test_sanitize_cert_field_special_characters() {
+        // Spaces preserved, special chars replaced
+        assert_eq!(sanitize_for_cert_field("Café François"), "Cafe Francois");
+        assert_eq!(sanitize_for_cert_field("Łódź Province"), "Lodz Province");
+        assert_eq!(sanitize_for_cert_field("São Paulo"), "Sao Paulo");
+    }
+
+    #[test]
+    fn test_sanitize_vs_cert_field_comparison() {
+        let input = "Müller & Söhne GmbH";
+        // sanitize converts spaces to hyphens
+        assert_eq!(sanitize(input), "Mueller-and-Soehne-GmbH");
+        // sanitize_for_cert_field preserves spaces
+        assert_eq!(sanitize_for_cert_field(input), "Mueller and Soehne GmbH");
     }
 }

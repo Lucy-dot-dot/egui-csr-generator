@@ -20,13 +20,13 @@ pub fn render(ui: &mut egui::Ui, output: &str) {
             .inner_margin(10.0)
             .show(ui, |ui| {
                 egui::ScrollArea::vertical()
-                    .max_height(200.0)
+                    .max_height(800.0)
                     .show(ui, |ui| {
                         ui.add(
                             egui::TextEdit::multiline(&mut output.to_string())
                                 .font(egui::TextStyle::Monospace)
                                 .desired_width(f32::INFINITY)
-                                .interactive(false),
+                                .interactive(true),
                         );
                     });
             });
