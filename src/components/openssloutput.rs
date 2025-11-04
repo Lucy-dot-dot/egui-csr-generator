@@ -9,9 +9,9 @@ pub fn render(ui: &mut egui::Ui, output: &str) {
 
     if has_output {
         let heading = if has_error {
-            "OpenSSL Command Failed"
+            egui::RichText::new("OpenSSL Command Failed").strong().color(egui::Color32::RED)
         } else {
-            "Output"
+            egui::RichText::new("OpenSSL Command Output")
         };
 
         ui.heading(heading);
