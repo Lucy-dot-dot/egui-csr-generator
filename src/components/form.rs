@@ -7,19 +7,6 @@ pub fn render(ui: &mut egui::Ui, app: &mut CertGenApp) {
         .show(ui, |ui| {
             ui.set_max_width(ui.available_width());
 
-            // Advanced mode toggle in top right
-            ui.horizontal(|ui| {
-                ui.label("");
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.checkbox(&mut app.advanced_mode, "Advanced");
-                    #[cfg(feature = "openssl-native")]
-                    if app.advanced_mode {
-                        ui.checkbox(&mut app.internal_generate, "Internal Generate");
-                    }
-                });
-            });
-
-            ui.separator();
             ui.add_space(5.0);
 
             // Country Code
@@ -54,10 +41,10 @@ pub fn render(ui: &mut egui::Ui, app: &mut CertGenApp) {
                     .desired_width(200.0));
             });
 
-            // Advanced mode fields
-            if app.advanced_mode {
+            // Optional fields section
+            {
                 ui.add_space(5.0);
-                ui.label(egui::RichText::new("Advanced Options").strong());
+                ui.label(egui::RichText::new("Optional Values").strong());
                 ui.separator();
 
                 // Organizational Unit
@@ -116,7 +103,7 @@ pub fn render(ui: &mut egui::Ui, app: &mut CertGenApp) {
                 });
 
                 ui.separator();
-            }
+            };
 
             // Common Name
             ui.horizontal(|ui| {

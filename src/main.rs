@@ -3,22 +3,24 @@
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::sync::Arc;
-use eframe::{egui, CreationContext};
+use eframe::{egui, CreationContext, Frame};
+use egui::Ui;
 #[cfg(debug_assertions)]
-use fake::{Fake, Rng};
+use fake::Fake;
+#[cfg(debug_assertions)]
+use fake::RngExt;
 use log::LevelFilter;
 use cert_config::CertConfig;
 
 mod components;
 mod cert_config;
-mod openssl_cli;
-#[cfg(feature = "openssl-native")]
 mod openssl_native;
 
 use components::form;
 use components::openssloutput;
 use components::execute_button;
 use components::save_button;
+#[cfg(debug_assertions)]
 use crate::cert_config::sanitize;
 
 fn setup_logger() {
@@ -48,11 +50,13 @@ fn setup_logger() {
 fn main() -> eframe::Result {
     setup_logger();
 
+    let icon = Arc::new(eframe::icon_data::from_png_bytes(include_bytes!("../icon.png")).expect("Failed to load icon"));
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_min_inner_size([800.0, 700.0])
             .with_inner_size([800.0, 800.0])
-            .with_title("OpenSSL Certificate Request Generator"),
+            .with_title("OpenSSL Certificate Request Generator")
+            .with_icon(icon),
         ..Default::default()
     };
 
@@ -73,8 +77,7 @@ pub struct CertGenApp {
     pub sans: Vec<String>,
     pub current_san: String,
 
-    // Advanced mode fields
-    pub advanced_mode: bool,
+    // Optional fields
     pub organizational_unit: String,
     pub email: String,
     pub street_address: String,
@@ -88,7 +91,6 @@ pub struct CertGenApp {
     pub key_content: String,
     pub csr_content: String,
     pub is_executing: bool,
-    pub internal_generate: bool
 }
 
 impl CertGenApp {
@@ -114,7 +116,6 @@ impl CertGenApp {
             common_name: String::new(),
             sans: Vec::new(),
             current_san: String::new(),
-            advanced_mode: false,
             organizational_unit: String::new(),
             email: String::new(),
             street_address: String::new(),
@@ -126,59 +127,24 @@ impl CertGenApp {
             key_content: String::new(),
             csr_content: String::new(),
             is_executing: false,
-            internal_generate: false
         }
     }
 
-    fn generate_config(&mut self) {
-        log::debug!("Generating config");
-        // Clear previous output
-        self.openssl_output.clear();
+    fn update_config_preview(&mut self) {
+        let required_ok = self.country.len() == 2
+            && self.country.chars().all(|c| c.is_alphabetic())
+            && !self.common_name.trim().is_empty()
+            && !self.organization.trim().is_empty()
+            && !self.locality.trim().is_empty()
+            && !self.state.trim().is_empty();
 
-        log::debug!("Input: Country: {}, State: {}, Locality: {}, Organization: {}, Common Name: {}, SAN: {:?}, Key Size: {}, Hash Algorithm: {}", self.country, self.state, self.locality, self.organization, self.common_name, self.sans, self.key_size, self.hash_algorithm);
-
-        // Validate country code
-        if self.country.len() != 2 {
-            self.openssl_output.push_str("Error: Country code must be exactly 2 letters\n");
-            return;
-        }
-        if !self.country.chars().all(|c| c.is_alphabetic()) {
-            self.openssl_output.push_str("Error: Country code must contain only letters\n");
-            return;
-        }
-
-        // Validate required fields
-        if self.common_name.trim().is_empty() {
-            self.openssl_output.push_str("Error: Common Name is required\n");
-            return;
-        }
-        if self.organization.trim().is_empty() {
-            self.openssl_output.push_str("Error: Organization is required\n");
-            return;
-        }
-        if self.locality.trim().is_empty() {
-            self.openssl_output.push_str("Error: Locality (city) is required\n");
-            return;
-        }
-        if self.state.trim().is_empty() {
-            self.openssl_output.push_str("Error: State/Province is required\n");
-            return;
-        }
-
-        let config = CertConfig::from(&*self).generate_config();
-
-        match config {
-            Ok(config_text) => {
-                log::debug!("Generated config:\n\n{}\n", config_text);
-                self.openssl_output.push_str("------------------- Openssl config begin ----------------------\n");
-                self.openssl_output.push_str(&config_text);
-                self.openssl_output.push_str("------------------- Openssl config end ----------------------\n");
-                self.config_output = config_text;
+        if required_ok {
+            match CertConfig::from(&*self).generate_config() {
+                Ok(text) => self.config_output = text,
+                Err(_) => self.config_output.clear(),
             }
-            Err(err) => {
-                log::error!("Error generating config: {}\n", err);
-                self.openssl_output.push_str(&format!("Error generating config: {}\n", err));
-            }
+        } else {
+            self.config_output.clear();
         }
     }
 
@@ -230,7 +196,6 @@ impl CertGenApp {
             fake_domain.clone()
         );
 
-        self.advanced_mode = fake::rand::random_bool(0.5);
         let san_amount = fake::rand::rng().random::<u8>() % 5;
         let mut san_list: Vec<String> = Vec::with_capacity(san_amount as usize + 1);
         san_list.push(fake_domain.clone());
@@ -257,12 +222,10 @@ impl CertGenApp {
 
         log::debug!("Faking input with: \n\tCompany: {}\n\tDomain: {}\n\tState: {}\n\tLocality: {}\n\tEmail: {}\n\tStreet: {}\n\tPostal: {}\n\tOU: {}\n", fake_company, fake_domain, fake_state, fake_locality, fake_email, fake_street, fake_postal, fake_ou);
 
-        if self.advanced_mode {
-            self.organizational_unit = fake_ou;
-            self.email = fake_email;
-            self.street_address = fake_street;
-            self.postal_code = fake_postal;
-        }
+        self.organizational_unit = fake_ou;
+        self.email = fake_email;
+        self.street_address = fake_street;
+        self.postal_code = fake_postal;
 
         self.country = "DE".to_string();
         self.state = fake_state;
@@ -270,12 +233,13 @@ impl CertGenApp {
         self.organization = fake_company;
         self.common_name = fake_domain.clone();
         self.sans = san_list;
+
     }
 }
 
 impl eframe::App for CertGenApp {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        egui::CentralPanel::default().show(ctx, |ui| {
+    fn ui(&mut self, ui: &mut Ui, _frame: &mut Frame) {
+        egui::CentralPanel::default().show_inside(ui, |ui| {
             ui.vertical_centered(|ui| {
                 ui.heading("OpenSSL Certificate Request Generator");
             });
@@ -288,6 +252,8 @@ impl eframe::App for CertGenApp {
 
                 ui.add_space(10.0);
 
+                self.update_config_preview();
+
                 // Buttons
                 ui.horizontal(|ui| {
                     #[cfg(debug_assertions)]
@@ -295,10 +261,6 @@ impl eframe::App for CertGenApp {
                         if ui.button("Fake input").clicked() {
                             self.fake_input();
                         }
-                    }
-
-                    if ui.button("Generate Configuration").clicked() {
-                        self.generate_config();
                     }
 
                     // Execute button component
@@ -313,7 +275,7 @@ impl eframe::App for CertGenApp {
                 ui.add_space(10.0);
 
                 // Output component
-                openssloutput::render(ui, &self.openssl_output);
+                openssloutput::render(ui, &self.config_output, &self.openssl_output);
             });
         });
     }
