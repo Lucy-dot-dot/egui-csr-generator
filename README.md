@@ -2,6 +2,10 @@
 
 A desktop application built with egui/eframe that provides a graphical interface for generating OpenSSL certificate signing requests (CSRs). The application simplifies the process of creating certificate configurations, executing OpenSSL commands, and packaging certificate files.
 
+## AI Disclaimer
+
+This project made heavy use of Claude. If you do not trust AI generated code for generating sensitive things like Certificates, do not use this project. 
+
 ## Features
 
 - User-friendly GUI for certificate request generation
