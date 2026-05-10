@@ -2,8 +2,8 @@ use std::sync::mpsc;
 use eframe::egui;
 use crate::CertGenApp;
 use crate::cert_config::{CertConfig, KeyAlgorithm};
-use crate::openssl_native::generate_cert_request;
-use crate::components::generate_and_save;
+use crate::internal_gen::generate_cert_request;
+use super::generate_and_save;
 
 pub fn build_recreate_command(key_algorithm: &KeyAlgorithm, name: &str) -> String {
     match key_algorithm {

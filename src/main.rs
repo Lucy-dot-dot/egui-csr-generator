@@ -14,7 +14,7 @@ use cert_config::{CertConfig, KeyAlgorithm, CertPurpose};
 
 mod components;
 mod cert_config;
-mod openssl_native;
+mod internal_gen;
 
 use components::form;
 use components::openssloutput;
