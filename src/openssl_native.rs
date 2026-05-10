@@ -24,9 +24,9 @@ pub fn generate_cert_request(config: &CertConfig) -> io::Result<GeneratedCert> {
             };
             log::debug!("Generating RSA {} key", bits);
             let private_key = RsaPrivateKey::new(&mut OsRng, bits)
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("RSA key generation failed: {}", e)))?;
+                .map_err(|e| io::Error::other(format!("RSA key generation failed: {}", e)))?;
             let pem = private_key.to_pkcs8_pem(LineEnding::LF)
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("Key PEM export failed: {}", e)))?;
+                .map_err(|e| io::Error::other(format!("Key PEM export failed: {}", e)))?;
             let sign_algo = match config.hash_algorithm.as_str() {
                 "sha384" => &PKCS_RSA_SHA384,
                 "sha512" => &PKCS_RSA_SHA512,
@@ -34,20 +34,20 @@ pub fn generate_cert_request(config: &CertConfig) -> io::Result<GeneratedCert> {
             };
             log::debug!("Using hash algorithm {}", config.hash_algorithm);
             let kp = KeyPair::from_pkcs8_pem_and_sign_algo(pem.as_str(), sign_algo)
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("Key pair creation failed: {}", e)))?;
+                .map_err(|e| io::Error::other(format!("Key pair creation failed: {}", e)))?;
             (kp, pem.to_string())
         }
         KeyAlgorithm::EcdsaP256 => {
             log::debug!("Generating ECDSA P-256 key");
             let kp = KeyPair::generate_for(&PKCS_ECDSA_P256_SHA256)
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("ECDSA P-256 key generation failed: {}", e)))?;
+                .map_err(|e| io::Error::other(format!("ECDSA P-256 key generation failed: {}", e)))?;
             let pem = kp.serialize_pem();
             (kp, pem)
         }
         KeyAlgorithm::EcdsaP384 => {
             log::debug!("Generating ECDSA P-384 key");
             let kp = KeyPair::generate_for(&PKCS_ECDSA_P384_SHA384)
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("ECDSA P-384 key generation failed: {}", e)))?;
+                .map_err(|e| io::Error::other(format!("ECDSA P-384 key generation failed: {}", e)))?;
             let pem = kp.serialize_pem();
             (kp, pem)
         }
@@ -59,30 +59,22 @@ pub fn generate_cert_request(config: &CertConfig) -> io::Result<GeneratedCert> {
     dn.push(DnType::LocalityName, sanitize_for_cert_field(&config.locality));
     dn.push(DnType::OrganizationName, sanitize_for_cert_field(&config.organization));
 
-    if let Some(street) = &config.street_address {
-        if !street.trim().is_empty() {
-            dn.push(DnType::CustomDnType(vec![2, 5, 4, 9]), sanitize_for_cert_field(street));
-        }
+    if let Some(street) = &config.street_address && !street.trim().is_empty() {
+        dn.push(DnType::CustomDnType(vec![2, 5, 4, 9]), sanitize_for_cert_field(street));
     }
 
-    if let Some(postal) = &config.postal_code {
-        if !postal.trim().is_empty() {
-            dn.push(DnType::CustomDnType(vec![2, 5, 4, 17]), postal.as_str());
-        }
+    if let Some(postal) = &config.postal_code && !postal.trim().is_empty() {
+        dn.push(DnType::CustomDnType(vec![2, 5, 4, 17]), postal.as_str());
     }
 
-    if let Some(ou) = &config.organizational_unit {
-        if !ou.trim().is_empty() {
-            dn.push(DnType::OrganizationalUnitName, sanitize_for_cert_field(ou));
-        }
+    if let Some(ou) = &config.organizational_unit && !ou.trim().is_empty() {
+        dn.push(DnType::OrganizationalUnitName, sanitize_for_cert_field(ou));
     }
 
     dn.push(DnType::CommonName, &config.common_name);
 
-    if let Some(email) = &config.email {
-        if !email.trim().is_empty() {
-            dn.push(DnType::CustomDnType(vec![1, 2, 840, 113549, 1, 9, 1]), email.as_str());
-        }
+    if let Some(email) = &config.email && !email.trim().is_empty() {
+        dn.push(DnType::CustomDnType(vec![1, 2, 840, 113549, 1, 9, 1]), email.as_str());
     }
 
     let mut params = CertificateParams::default();
@@ -92,7 +84,8 @@ pub fn generate_cert_request(config: &CertConfig) -> io::Result<GeneratedCert> {
         if let Ok(ip) = san.parse::<std::net::IpAddr>() {
             params.subject_alt_names.push(SanType::IpAddress(ip));
         } else {
-            params.subject_alt_names.push(SanType::DnsName(san.parse().unwrap()));
+            let parsed_san = san.parse().map_err(|e| io::Error::other(format!("SAN parsing failed: {}", e)))?;
+            params.subject_alt_names.push(SanType::DnsName(parsed_san));
         }
     }
 
@@ -117,11 +110,11 @@ pub fn generate_cert_request(config: &CertConfig) -> io::Result<GeneratedCert> {
 
     log::debug!("Generating CSR");
     let cert = params.serialize_request(&key_pair)
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("Certificate creation failed: {}", e)))?;
+        .map_err(|e| io::Error::other(format!("Certificate creation failed: {}", e)))?;
 
     log::debug!("Converting CSR to PEM format");
     let csr_pem = cert.pem()
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("CSR PEM export failed: {}", e)))?;
+        .map_err(|e| io::Error::other(format!("CSR PEM export failed: {}", e)))?;
 
     log::info!("Generated certificate request for {} with {} SANs", config.common_name, config.san.len());
     Ok(GeneratedCert {
@@ -303,7 +296,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn test_rsa_4096() {
         let config = CertConfig {
             key_algorithm: KeyAlgorithm::Rsa4096,

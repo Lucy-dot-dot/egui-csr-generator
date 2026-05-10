@@ -206,7 +206,7 @@ impl CertGenApp {
         san_list.push(fake_domain.clone());
         for _ in 0..san_amount {
             if fake::rand::random_bool(0.2) {
-                san_list.push(format!("{}", IP().fake::<String>()));
+                san_list.push(IP().fake::<String>());
             } else {
                 let subdomain = sanitize(fake::faker::company::en::BsNoun().fake::<&str>()).to_ascii_lowercase();
                 san_list.push(format!("{}.{}", subdomain, fake_domain));

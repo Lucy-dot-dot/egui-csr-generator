@@ -38,6 +38,9 @@ pub fn generate_and_save(cnf: &str, name: &str, key: &str, csr: &str, recreate_c
         let target = path.join(format!("{}_certificate_files.zip", name));
         log::info!("Writing zip to {}", target.display());
         fs::write(target, zip_data)?;
+    } else {
+        log::error!("Could not find downloads folder");
+        return Err(std::io::Error::new(std::io::ErrorKind::NotFound, "Unable to determine downloads folder path"));
     }
     Ok(())
 }

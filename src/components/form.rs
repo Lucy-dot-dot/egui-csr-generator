@@ -2,6 +2,30 @@ use eframe::egui;
 use crate::CertGenApp;
 use crate::cert_config::{KeyAlgorithm, CertPurpose};
 
+fn is_valid_san(san: &str) -> bool {
+    if san.is_empty() {
+        return false;
+    }
+    if san.parse::<std::net::IpAddr>().is_ok() {
+        return true;
+    }
+    // Strip optional wildcard prefix
+    let check = san.strip_prefix("*.").unwrap_or(san);
+    if check.is_empty() {
+        return false;
+    }
+    // Valid chars for a DNS label sequence: letters, digits, hyphens, dots
+    if !check.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '.') {
+        return false;
+    }
+    if check.contains("..") {
+        return false;
+    }
+    let first = check.chars().next().unwrap();
+    let last = check.chars().last().unwrap();
+    first != '.' && first != '-' && last != '.' && last != '-'
+}
+
 pub fn render(ui: &mut egui::Ui, app: &mut CertGenApp) {
     egui::Frame::group(ui.style())
         .inner_margin(10.0)
@@ -165,15 +189,25 @@ pub fn render(ui: &mut egui::Ui, app: &mut CertGenApp) {
                     .hint_text("Enter domain or IP (e.g. www.example.com)")
                     .desired_width(300.0));
 
-                // Handle Enter key
-                if response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                    if !app.current_san.is_empty() {
-                        app.sans.push(app.current_san.clone());
-                        app.current_san.clear();
+                let san_valid = is_valid_san(&app.current_san);
+
+                if !app.current_san.is_empty() {
+                    if app.current_san.parse::<std::net::IpAddr>().is_ok() {
+                        ui.label(egui::RichText::new("IP").color(egui::Color32::GREEN));
+                    } else if san_valid {
+                        ui.label(egui::RichText::new("DNS").color(egui::Color32::GREEN));
+                    } else {
+                        ui.label(egui::RichText::new("INVALID").color(egui::Color32::RED));
                     }
                 }
 
-                if ui.button("Add SAN").clicked() && !app.current_san.is_empty() {
+                // Handle Enter key
+                if response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) && san_valid {
+                    app.sans.push(app.current_san.clone());
+                    app.current_san.clear();
+                }
+
+                if ui.add_enabled(san_valid, egui::Button::new("Add SAN")).clicked() {
                     app.sans.push(app.current_san.clone());
                     app.current_san.clear();
                 }

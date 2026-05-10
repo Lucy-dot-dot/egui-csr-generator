@@ -29,7 +29,7 @@ This project made heavy use of Claude. If you do not trust AI generated code for
 1. Clone the repository:
 ```bash
 git clone <repository-url>
-cd openssl-cert-dioxius
+cd egui-csr-generator
 ```
 
 2. Build the project:
@@ -88,12 +88,12 @@ cargo run --release
 cargo build --release
 ```
 
-The compiled binary will be available in `target/release/openssl-certificate-request-generator.exe`
+The compiled binary will be available in `target/release/certificate-request-generator.exe`
 
 ## Project Structure
 
 ```
-openssl-cert-dioxius/
+egui-csr-generator/
 ├── src/
 │   ├── main.rs                        # Entry point, app state, egui App implementation
 │   ├── cert_config.rs                 # CertConfig struct and OpenSSL .cnf generation

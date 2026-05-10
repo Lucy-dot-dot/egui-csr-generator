@@ -256,32 +256,24 @@ impl CertConfig {
         config_content.push_str(&format!("ST = {}\n", sanitize_for_cert_field(&self.state)));
         config_content.push_str(&format!("L = {}\n", sanitize_for_cert_field(&self.locality)));
 
-        if let Some(street) = &self.street_address {
-            if !street.trim().is_empty() {
-                config_content.push_str(&format!("street = {}\n", sanitize_for_cert_field(street)));
-            }
+        if let Some(street) = &self.street_address && !street.trim().is_empty() {
+            config_content.push_str(&format!("street = {}\n", sanitize_for_cert_field(street)));
         }
 
-        if let Some(postal) = &self.postal_code {
-            if !postal.trim().is_empty() {
-                config_content.push_str(&format!("postalCode = {}\n", postal));
-            }
+        if let Some(postal) = &self.postal_code && !postal.trim().is_empty() {
+            config_content.push_str(&format!("postalCode = {}\n", postal));
         }
 
         config_content.push_str(&format!("O = {}\n", sanitize_for_cert_field(&self.organization)));
 
-        if let Some(ou) = &self.organizational_unit {
-            if !ou.trim().is_empty() {
-                config_content.push_str(&format!("OU = {}\n", sanitize_for_cert_field(ou)));
-            }
+        if let Some(ou) = &self.organizational_unit && !ou.trim().is_empty() {
+            config_content.push_str(&format!("OU = {}\n", sanitize_for_cert_field(ou)));
         }
 
         config_content.push_str(&format!("CN = {}\n", self.common_name));
 
-        if let Some(email_addr) = &self.email {
-            if !email_addr.trim().is_empty() {
-                config_content.push_str(&format!("emailAddress = {}\n", email_addr));
-            }
+        if let Some(email_addr) = &self.email && !email_addr.trim().is_empty() {
+            config_content.push_str(&format!("emailAddress = {}\n", email_addr));
         }
 
         config_content.push_str("\n[v3_req]\n");
