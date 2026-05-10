@@ -2,6 +2,7 @@
 
 use std::fs::File;
 use std::io::{BufWriter, Write};
+use std::path::PathBuf;
 use std::sync::Arc;
 use eframe::{egui, CreationContext, Frame};
 use egui::Ui;
@@ -25,7 +26,19 @@ use crate::cert_config::sanitize;
 
 fn setup_logger() {
     let current_time = time::OffsetDateTime::now_local().unwrap_or(time::OffsetDateTime::now_utc());
-    let target = match File::create(format!("{}.log", current_time.unix_timestamp())) {
+
+    #[cfg(not(debug_assertions))]
+    let mut log_dir = dirs::data_local_dir()
+        .map(|p| p.join("certificate-request-generator"))
+        .filter(|p| std::fs::create_dir_all(p).is_ok())
+        .unwrap_or_else(|| PathBuf::from("."));
+
+    #[cfg(debug_assertions)]
+    let mut log_dir = PathBuf::from(".");
+
+    log_dir.push(format!("{}.log", current_time.unix_timestamp()));
+
+    let target = match File::create(log_dir) {
         Ok(file) => Some(env_logger::Target::Pipe(Box::new(BufWriter::new(file)))),
         Err(_) => None,
     };
@@ -112,10 +125,10 @@ impl CertGenApp {
 
         fonts.families.insert(egui::FontFamily::Name("JetBrainsMono".into()), vec!["JetBrainsMono".to_owned()]);
 
-        fonts.families.get_mut(&egui::FontFamily::Proportional).unwrap() //it works
+        fonts.families.get_mut(&egui::FontFamily::Proportional).expect("egui default font families missing")
             .insert(0, "JetBrainsMono".to_owned());
 
-        fonts.families.get_mut(&egui::FontFamily::Monospace).unwrap()
+        fonts.families.get_mut(&egui::FontFamily::Monospace).expect("egui default font families missing")
             .insert(0, "JetBrainsMono".to_owned());
         cc.egui_ctx.set_fonts(fonts);
         log::debug!("Initializing app, done");

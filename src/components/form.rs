@@ -164,13 +164,29 @@ pub fn render(ui: &mut egui::Ui, app: &mut CertGenApp) {
             // Common Name
             ui.horizontal(|ui| {
                 ui.label("Common Name:");
-                let response = ui.add(egui::TextEdit::singleline(&mut app.common_name)
+                let response = egui::TextEdit::singleline(&mut app.common_name)
                     .hint_text("mail.test.org")
-                    .desired_width(200.0));
+                    .desired_width(200.0)
+                    .show(ui);
 
                 // Update or add CN as first SAN when it changes
-                if response.changed() {
+                if response.response.changed() {
+                    let cn_len = app.common_name.chars().count();
                     app.common_name = sanitize(&app.common_name);
+                    if cn_len != app.common_name.chars().count() {
+                        let text_edit_id = response.response.id;
+
+                        if let Some(mut state) = egui::TextEdit::load_state(ui.ctx(), text_edit_id) &&
+                            let Some(cursor) = state.cursor.char_range() {
+                            let new_pos = cursor.primary.index + 1;
+                            let ccursor = egui::text::CCursor::new(new_pos);
+                            state
+                                .cursor
+                                .set_char_range(Some(egui::text::CCursorRange::one(ccursor)));
+                            state.store(ui.ctx(), text_edit_id);
+                            ui.memory_mut(|mem| mem.request_focus(text_edit_id)); // give focus back to the [`TextEdit`].
+                        }
+                    }
 
                     if !app.common_name.is_empty() {
                         if app.sans.is_empty() {
@@ -205,7 +221,7 @@ pub fn render(ui: &mut egui::Ui, app: &mut CertGenApp) {
                         if app.sans.contains(&app.current_san) {
                             ui.label(egui::RichText::new("SAN already exists").color(egui::Color32::YELLOW));
                         } else {
-                            ui.label(egui::RichText::new("INVALID").color(egui::Color32::RED));
+                            ui.label(egui::RichText::new("INVALID").color(egui::Color32::RED)).on_hover_text("Must be a valid DNS label or IP address");
                         }
                     }
                 }
