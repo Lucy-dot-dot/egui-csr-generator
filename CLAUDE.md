@@ -45,7 +45,7 @@ Binary name: `certificate-request-generator` (defined in Cargo.toml)
   - `KeyAlgorithm` enum: `Rsa2048`, `Rsa3072`, `Rsa4096`, `EcdsaP256`, `EcdsaP384`
   - `CertPurpose` enum: `TlsServer`, `TlsClient`
   - `CertConfig::generate_config()`: Creates a formatted OpenSSL-compatible `.cnf` string (used for the config preview and included in the zip); not used to invoke the CLI
-  - `sanitize()`: Debug-only; converts special characters to ASCII equivalents, spaces to hyphens — for filenames
+  - `sanitize()`: Converts special characters to ASCII equivalents, spaces to hyphens — for filenames; also applied to CN on each keystroke in the form
   - `sanitize_for_cert_field()`: Same conversion but preserves spaces — for Distinguished Name fields
 
 - **openssl_native.rs**: Native certificate generation module containing:
@@ -53,11 +53,11 @@ Binary name: `certificate-request-generator` (defined in Cargo.toml)
   - `generate_cert_request()`: Generates key pairs and CSRs in-process using `rcgen` and `rsa`. Supports RSA (2048/3072/4096) and ECDSA (P-256/P-384). No external process is spawned.
 
 - **components/**: Helper modules for rendering UI sections with egui (not components in the React/Dioxus sense, but modular render functions)
-  - `form.rs`: Contains `render()` function that displays the input form for certificate details, including advanced mode toggle
+  - `form.rs`: Contains `render()` function that displays the input form for certificate details; optional fields (OU, email, street address, postal code, key algorithm, hash algorithm, cert purpose) are always visible
   - `execute_button.rs`: Contains `render()` function for the "Generate Certificate Request" button; spawns a background thread via `mpsc` to call `openssl_native::generate_cert_request()`, then auto-saves the zip via `generate_and_save()`
   - `save_button.rs`: Contains `render()` function for the "Save Certificate Files" button; allows manual re-saving if key and CSR are already generated
   - `openssloutput.rs`: Contains `render()` function for displaying the config preview and generation output in scrollable text areas
-  - `mod.rs`: Module exports and contains `generate_and_save()` which creates a zip file in memory containing `.cnf`, `.key`, `.csr`, and `recreate_command.txt`, then writes it to the downloads folder
+  - `mod.rs`: Module exports and contains `generate_and_save()` which creates a zip file in memory containing `.cnf`, `.key`, `.csr`, and `recreate_command.txt`, then writes it to the downloads folder; if the filename already exists it appends `_1`, `_2`, etc. rather than overwriting
 
 ### Key Application Flow
 
@@ -82,11 +82,12 @@ Binary name: `certificate-request-generator` (defined in Cargo.toml)
 ### Special Handling
 
 - **Wildcard certificates**: CN starting with `*.` is converted to `wildcard.` for filenames (e.g., `*.example.com` becomes `wildcard.example.com.key`); handled in `execute_button::spawn_generation()`
+- **CN sanitization**: `sanitize()` is applied to the CN field on every keystroke, converting invalid characters in-place before they can reach the filename or cert generation logic
 - **Special characters**: `sanitize_for_cert_field()` converts umlauts and accented characters to ASCII equivalents while preserving spaces, used when building Distinguished Name fields
 - **SAN auto-detection**: Automatically distinguishes between IP addresses and DNS names in Subject Alternative Names
-- **Debug mode**: Includes a "Fake input" button using German locale fake data for testing; `fake_input()` and `sanitize()` are compiled out in release builds
-- **Advanced mode**: Toggle in the UI that reveals additional certificate fields (organizational unit, email, street address, postal code, key algorithm, hash algorithm, cert purpose)
-- **Logging**: All operations are logged to timestamped .log files in the working directory
+- **Duplicate SAN prevention**: Adding a SAN already in the list is blocked; the label changes to "SAN already exists" (yellow) instead of "DNS"/"IP" (green)
+- **Debug mode**: Includes a "Fake input" button using German locale fake data for testing; `fake_input()` is compiled out in release builds
+- **Logging**: All operations are logged to timestamped `.log` files in the working directory; if the log file cannot be created (e.g. read-only CWD), logging is silently disabled rather than panicking
 - **Background generation**: Key/CSR generation runs on a separate thread (RSA-4096 can be slow); the UI polls via `mpsc::Receiver` and shows "Processing..." while running
 
 ### Configuration Files

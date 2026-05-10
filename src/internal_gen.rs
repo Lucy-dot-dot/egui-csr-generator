@@ -13,6 +13,7 @@ pub struct GeneratedCert {
     pub csr_pem: String,
 }
 
+/// Generates the certificate request based on the provided configuration, sanitization is provided for most fields
 pub fn generate_cert_request(config: &CertConfig) -> io::Result<GeneratedCert> {
     let (key_pair, key_pem) = match &config.key_algorithm {
         KeyAlgorithm::Rsa2048 | KeyAlgorithm::Rsa3072 | KeyAlgorithm::Rsa4096 => {

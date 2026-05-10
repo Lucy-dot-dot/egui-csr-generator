@@ -7,7 +7,8 @@ pub mod output;
 pub mod save_button;
 pub mod execute_button;
 
-pub fn generate_and_save(cnf: &str, name: &str, key: &str, csr: &str, recreate_cmd: &str) -> std::io::Result<()> {
+/// The generated zip file does not use compression, the files are not even 5kb big.
+pub fn save_certificate_files_to_zip(cnf: &str, name: &str, key: &str, csr: &str, recreate_cmd: &str) -> std::io::Result<()> {
     log::debug!("Generating and saving files to zip");
     log::debug!("Contents: \n{name}.cnf = {cnf}\n\n{name}.key = {key}\n\n{name}.csr = {csr}\n\ncommand: {recreate_cmd}");
     // Create zip file in memory
