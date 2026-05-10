@@ -29,9 +29,9 @@ pub fn render(ui: &mut egui::Ui, config_preview: &str, command_output: &str) {
 
     if has_command_output {
         let heading = if has_error {
-            egui::RichText::new("OpenSSL Command Failed").strong().color(egui::Color32::RED)
+            egui::RichText::new("Error while processing input").strong().color(egui::Color32::RED)
         } else {
-            egui::RichText::new("OpenSSL Command Output")
+            egui::RichText::new("Process Output")
         };
 
         ui.heading(heading);

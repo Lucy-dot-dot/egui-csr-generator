@@ -36,8 +36,25 @@ pub fn generate_and_save(cnf: &str, name: &str, key: &str, csr: &str, recreate_c
 
     if let Some(path) = dirs::download_dir() {
         let target = path.join(format!("{}_certificate_files.zip", name));
-        log::info!("Writing zip to {}", target.display());
-        fs::write(target, zip_data)?;
+        if target.exists() {
+            log::info!("Target location already exists, finding alternative name");
+            // you have other issues if you exhaust 100.000 files in your downloads folder
+            for i in 1..100_000 {
+                let alt_name = format!("{}_certificate_files_{}.zip", name, i);
+                let alt_path = path.join(alt_name.clone());
+                log::debug!("Checking if {} exists", alt_path.display());
+                if !alt_path.exists() {
+                    log::info!("Alternative name {} not found, writing to {}", alt_name, target.display());
+                    fs::write(alt_path, zip_data)?;
+                    return Ok(());
+                } else {
+                    log::info!("Alternative name {} already exists, next attempt", alt_name);
+                }
+            }
+        } else {
+            log::info!("Writing zip to {}", target.display());
+            fs::write(target, zip_data)?;
+        }
     } else {
         log::error!("Could not find downloads folder");
         return Err(std::io::Error::new(std::io::ErrorKind::NotFound, "Unable to determine downloads folder path"));

@@ -1,6 +1,6 @@
 use eframe::egui;
 use crate::CertGenApp;
-use crate::cert_config::{KeyAlgorithm, CertPurpose};
+use crate::cert_config::{KeyAlgorithm, CertPurpose, sanitize};
 
 fn is_valid_san(san: &str) -> bool {
     if san.is_empty() {
@@ -40,6 +40,9 @@ pub fn render(ui: &mut egui::Ui, app: &mut CertGenApp) {
                 ui.add(egui::TextEdit::singleline(&mut app.country)
                     .hint_text("DE")
                     .desired_width(200.0));
+                if !app.country.is_empty() && (app.country.len() != 2 || !app.country.chars().all(|c| c.is_alphabetic())) {
+                    ui.label(egui::RichText::new("Must be 2 letters").color(egui::Color32::RED));
+                }
             });
 
             // State/Province
@@ -167,6 +170,8 @@ pub fn render(ui: &mut egui::Ui, app: &mut CertGenApp) {
 
                 // Update or add CN as first SAN when it changes
                 if response.changed() {
+                    app.common_name = sanitize(&app.common_name);
+
                     if !app.common_name.is_empty() {
                         if app.sans.is_empty() {
                             app.sans.push(app.common_name.clone());
@@ -189,7 +194,7 @@ pub fn render(ui: &mut egui::Ui, app: &mut CertGenApp) {
                     .hint_text("Enter domain or IP (e.g. www.example.com)")
                     .desired_width(300.0));
 
-                let san_valid = is_valid_san(&app.current_san);
+                let san_valid = is_valid_san(&app.current_san) && !app.sans.contains(&app.current_san);
 
                 if !app.current_san.is_empty() {
                     if app.current_san.parse::<std::net::IpAddr>().is_ok() {
@@ -197,7 +202,11 @@ pub fn render(ui: &mut egui::Ui, app: &mut CertGenApp) {
                     } else if san_valid {
                         ui.label(egui::RichText::new("DNS").color(egui::Color32::GREEN));
                     } else {
-                        ui.label(egui::RichText::new("INVALID").color(egui::Color32::RED));
+                        if app.sans.contains(&app.current_san) {
+                            ui.label(egui::RichText::new("SAN already exists").color(egui::Color32::YELLOW));
+                        } else {
+                            ui.label(egui::RichText::new("INVALID").color(egui::Color32::RED));
+                        }
                     }
                 }
 
@@ -255,7 +264,8 @@ pub fn render(ui: &mut egui::Ui, app: &mut CertGenApp) {
             ui.add_space(10.0);
 
             // Clear button
-            if ui.button("Clear All Fields").clicked() {
+            let button = egui::Button::new("Clear All Fields");
+            if ui.add_enabled(!app.is_executing, button).clicked() {
                 app.clear_form();
             }
         });

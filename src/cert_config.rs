@@ -57,7 +57,6 @@ impl From<&CertGenApp> for CertConfig {
 /// - Replaces special characters with ASCII equivalents
 /// - Converts spaces to hyphens
 /// - Removes/replaces characters not valid for domain names
-#[cfg(debug_assertions)]
 pub fn sanitize(input: &str) -> String {
     sanitize_internal(input, false)
 }

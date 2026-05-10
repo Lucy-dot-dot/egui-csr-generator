@@ -25,10 +25,19 @@ use crate::cert_config::sanitize;
 
 fn setup_logger() {
     let current_time = time::OffsetDateTime::now_local().unwrap_or(time::OffsetDateTime::now_utc());
-    let target = Box::new(BufWriter::new(File::create(format!("{}.log", current_time.unix_timestamp())).expect("Can't create file")));
+    let target = match File::create(format!("{}.log", current_time.unix_timestamp())) {
+        Ok(file) => Some(env_logger::Target::Pipe(Box::new(BufWriter::new(file)))),
+        Err(_) => None,
+    };
 
-    env_logger::Builder::new()
-        .target(env_logger::Target::Pipe(target))
+    let mut builder = env_logger::Builder::new();
+
+    let builder = match target {
+        None => { &mut builder }
+        Some(target) => { builder.target(target) }
+    };
+
+    builder
         .filter(None, LevelFilter::Debug)
         .format(|buf, record| {
             let now = time::OffsetDateTime::now_local().unwrap_or(time::OffsetDateTime::now_utc());
@@ -55,13 +64,13 @@ fn main() -> eframe::Result {
         viewport: egui::ViewportBuilder::default()
             .with_min_inner_size([800.0, 700.0])
             .with_inner_size([800.0, 1100.0])
-            .with_title("OpenSSL Certificate Request Generator")
+            .with_title("X.509 Certificate Request Generator")
             .with_icon(icon),
         ..Default::default()
     };
 
     eframe::run_native(
-        "OpenSSL Certificate Generator",
+        "X.509 Certificate Request Generator",
         options,
         Box::new(|cc| Ok(Box::new(CertGenApp::new(cc)))),
     )
@@ -172,6 +181,9 @@ impl CertGenApp {
         self.config_output.clear();
         self.key_content.clear();
         self.csr_content.clear();
+        self.is_executing = false;
+        self.pending_cert = None;
+        log::debug!("Form cleared");
     }
 
     #[cfg(debug_assertions)]
@@ -205,7 +217,7 @@ impl CertGenApp {
         let mut san_list: Vec<String> = Vec::with_capacity(san_amount as usize + 1);
         san_list.push(fake_domain.clone());
         for _ in 0..san_amount {
-            if fake::rand::random_bool(0.2) {
+            if rand::random_bool(0.2) {
                 san_list.push(IP().fake::<String>());
             } else {
                 let subdomain = sanitize(fake::faker::company::en::BsNoun().fake::<&str>()).to_ascii_lowercase();
@@ -246,7 +258,7 @@ impl eframe::App for CertGenApp {
     fn ui(&mut self, ui: &mut Ui, _frame: &mut Frame) {
         egui::CentralPanel::default().show_inside(ui, |ui| {
             ui.vertical_centered(|ui| {
-                ui.heading("OpenSSL Certificate Request Generator");
+                ui.heading("X.509 Certificate Request Generator");
             });
 
             ui.add_space(10.0);
