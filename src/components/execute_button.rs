@@ -43,7 +43,7 @@ pub fn render(ui: &mut egui::Ui, app: &mut CertGenApp) {
     if let Some(result) = finished {
         app.key_content = result.key_pem;
         app.csr_content = result.csr_pem;
-        app.openssl_output.push_str(&result.messages);
+        app.output.push_str(&result.messages);
         app.is_executing = false;
         app.pending_cert = None;
     }

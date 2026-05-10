@@ -3,7 +3,7 @@ use zip::{ZipWriter, write::SimpleFileOptions};
 use std::io::{Write, Cursor};
 
 pub mod form;
-pub mod openssloutput;
+pub mod output;
 pub mod save_button;
 pub mod execute_button;
 

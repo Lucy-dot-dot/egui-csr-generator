@@ -17,7 +17,7 @@ mod cert_config;
 mod internal_gen;
 
 use components::form;
-use components::openssloutput;
+use components::output;
 use components::execute_button;
 use components::save_button;
 #[cfg(debug_assertions)]
@@ -96,7 +96,7 @@ pub struct CertGenApp {
     pub cert_purpose: CertPurpose,
 
     // Output state
-    pub openssl_output: String,
+    pub output: String,
     pub config_output: String,
     pub key_content: String,
     pub csr_content: String,
@@ -134,7 +134,7 @@ impl CertGenApp {
             key_algorithm: KeyAlgorithm::Rsa2048,
             hash_algorithm: "sha256".to_string(),
             cert_purpose: CertPurpose::TlsServer,
-            openssl_output: String::new(),
+            output: String::new(),
             config_output: String::new(),
             key_content: String::new(),
             csr_content: String::new(),
@@ -177,7 +177,7 @@ impl CertGenApp {
         self.key_algorithm = KeyAlgorithm::Rsa2048;
         self.hash_algorithm = "sha256".to_string();
         self.cert_purpose = CertPurpose::TlsServer;
-        self.openssl_output.clear();
+        self.output.clear();
         self.config_output.clear();
         self.key_content.clear();
         self.csr_content.clear();
@@ -292,7 +292,7 @@ impl eframe::App for CertGenApp {
                 ui.add_space(10.0);
 
                 // Output component
-                openssloutput::render(ui, &self.config_output, &self.openssl_output);
+                output::render(ui, &self.config_output, &self.output);
             });
         });
     }
