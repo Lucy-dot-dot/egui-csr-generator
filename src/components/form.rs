@@ -1,5 +1,6 @@
 use eframe::egui;
 use crate::CertGenApp;
+use crate::cert_config::{KeyAlgorithm, CertPurpose};
 
 pub fn render(ui: &mut egui::Ui, app: &mut CertGenApp) {
     egui::Frame::group(ui.style())
@@ -79,26 +80,54 @@ pub fn render(ui: &mut egui::Ui, app: &mut CertGenApp) {
                         .desired_width(200.0));
                 });
 
-                // Key Size
+                // Key Algorithm
                 ui.horizontal(|ui| {
-                    ui.label("Key Size:");
-                    egui::ComboBox::from_id_salt("key_size")
-                        .selected_text(&app.key_size)
+                    ui.label("Key Algorithm:");
+                    let algo_label = match &app.key_algorithm {
+                        KeyAlgorithm::Rsa2048 => "RSA 2048",
+                        KeyAlgorithm::Rsa3072 => "RSA 3072",
+                        KeyAlgorithm::Rsa4096 => "RSA 4096",
+                        KeyAlgorithm::EcdsaP256 => "ECDSA P-256",
+                        KeyAlgorithm::EcdsaP384 => "ECDSA P-384",
+                    };
+                    egui::ComboBox::from_id_salt("key_algorithm")
+                        .selected_text(algo_label)
                         .show_ui(ui, |ui| {
-                            ui.selectable_value(&mut app.key_size, "2048".to_string(), "2048 bits");
-                            ui.selectable_value(&mut app.key_size, "4096".to_string(), "4096 bits");
+                            ui.selectable_value(&mut app.key_algorithm, KeyAlgorithm::Rsa2048, "RSA 2048");
+                            ui.selectable_value(&mut app.key_algorithm, KeyAlgorithm::Rsa3072, "RSA 3072");
+                            ui.selectable_value(&mut app.key_algorithm, KeyAlgorithm::Rsa4096, "RSA 4096");
+                            ui.selectable_value(&mut app.key_algorithm, KeyAlgorithm::EcdsaP256, "ECDSA P-256");
+                            ui.selectable_value(&mut app.key_algorithm, KeyAlgorithm::EcdsaP384, "ECDSA P-384");
                         });
                 });
 
-                // Hash Algorithm
+                // Hash Algorithm (RSA only — ECDSA hash is fixed by the curve)
+                let is_rsa = matches!(app.key_algorithm, KeyAlgorithm::Rsa2048 | KeyAlgorithm::Rsa3072 | KeyAlgorithm::Rsa4096);
+                if is_rsa {
+                    ui.horizontal(|ui| {
+                        ui.label("Hash Algorithm:");
+                        egui::ComboBox::from_id_salt("hash_algo")
+                            .selected_text(&app.hash_algorithm)
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(&mut app.hash_algorithm, "sha256".to_string(), "SHA-256");
+                                ui.selectable_value(&mut app.hash_algorithm, "sha384".to_string(), "SHA-384");
+                                ui.selectable_value(&mut app.hash_algorithm, "sha512".to_string(), "SHA-512");
+                            });
+                    });
+                }
+
+                // Certificate Purpose
                 ui.horizontal(|ui| {
-                    ui.label("Hash Algorithm:");
-                    egui::ComboBox::from_id_salt("hash_algo")
-                        .selected_text(&app.hash_algorithm)
+                    ui.label("Certificate Purpose:");
+                    let purpose_label = match &app.cert_purpose {
+                        CertPurpose::TlsServer => "TLS Server",
+                        CertPurpose::TlsClient => "TLS Client",
+                    };
+                    egui::ComboBox::from_id_salt("cert_purpose")
+                        .selected_text(purpose_label)
                         .show_ui(ui, |ui| {
-                            ui.selectable_value(&mut app.hash_algorithm, "sha256".to_string(), "SHA-256");
-                            ui.selectable_value(&mut app.hash_algorithm, "sha384".to_string(), "SHA-384");
-                            ui.selectable_value(&mut app.hash_algorithm, "sha512".to_string(), "SHA-512");
+                            ui.selectable_value(&mut app.cert_purpose, CertPurpose::TlsServer, "TLS Server");
+                            ui.selectable_value(&mut app.cert_purpose, CertPurpose::TlsClient, "TLS Client");
                         });
                 });
 

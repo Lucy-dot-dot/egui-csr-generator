@@ -1,36 +1,53 @@
 use std::io;
 use crate::CertGenApp;
 
-pub struct CertConfig<'a> {
-    pub country: &'a str,
-    pub state: &'a str,
-    pub locality: &'a str,
-    pub organization: &'a str,
-    pub organizational_unit: Option<&'a str>,
-    pub email: Option<&'a str>,
-    pub street_address: Option<&'a str>,
-    pub postal_code: Option<&'a str>,
-    pub common_name: &'a str,
-    pub san: &'a Vec<String>,
-    pub key_size: &'a str,
-    pub hash_algorithm: &'a str,
+#[derive(Clone, Debug, PartialEq)]
+pub enum KeyAlgorithm {
+    Rsa2048,
+    Rsa3072,
+    Rsa4096,
+    EcdsaP256,
+    EcdsaP384,
 }
 
-impl<'a> From<&'a CertGenApp> for CertConfig<'a> {
-    fn from(value: &'a CertGenApp) -> Self {
+#[derive(Clone, Debug, PartialEq)]
+pub enum CertPurpose {
+    TlsServer,
+    TlsClient,
+}
+
+pub struct CertConfig {
+    pub country: String,
+    pub state: String,
+    pub locality: String,
+    pub organization: String,
+    pub organizational_unit: Option<String>,
+    pub email: Option<String>,
+    pub street_address: Option<String>,
+    pub postal_code: Option<String>,
+    pub common_name: String,
+    pub san: Vec<String>,
+    pub key_algorithm: KeyAlgorithm,
+    pub hash_algorithm: String,
+    pub cert_purpose: CertPurpose,
+}
+
+impl From<&CertGenApp> for CertConfig {
+    fn from(value: &CertGenApp) -> Self {
         CertConfig {
-            country: &value.country,
-            state: &value.state,
-            locality: &value.locality,
-            organization: &value.organization,
-            organizational_unit: if value.organizational_unit.is_empty() { None } else { Some(&value.organizational_unit) },
-            email: if value.email.is_empty() { None } else { Some(&value.email) },
-            street_address: if value.street_address.is_empty() { None } else { Some(&value.street_address) },
-            postal_code: if value.postal_code.is_empty() { None } else { Some(&value.postal_code) },
-            common_name: &value.common_name,
-            san: &value.sans,
-            key_size: &value.key_size,
-            hash_algorithm: &value.hash_algorithm,
+            country: value.country.clone(),
+            state: value.state.clone(),
+            locality: value.locality.clone(),
+            organization: value.organization.clone(),
+            organizational_unit: if value.organizational_unit.is_empty() { None } else { Some(value.organizational_unit.clone()) },
+            email: if value.email.is_empty() { None } else { Some(value.email.clone()) },
+            street_address: if value.street_address.is_empty() { None } else { Some(value.street_address.clone()) },
+            postal_code: if value.postal_code.is_empty() { None } else { Some(value.postal_code.clone()) },
+            common_name: value.common_name.clone(),
+            san: value.sans.clone(),
+            key_algorithm: value.key_algorithm.clone(),
+            hash_algorithm: value.hash_algorithm.clone(),
+            cert_purpose: value.cert_purpose.clone(),
         }
     }
 }
@@ -181,7 +198,7 @@ fn sanitize_internal(input: &str, preserve_spaces: bool) -> String {
     result
 }
 
-impl<'a> CertConfig<'a> {
+impl CertConfig {
 
     pub fn generate_config(&self) -> io::Result<String> {
         // Validate country code is two letters
@@ -189,51 +206,71 @@ impl<'a> CertConfig<'a> {
             return Err(io::Error::new(io::ErrorKind::InvalidInput, "Country code must be exactly 2 letters"));
         }
 
-        // Generate configuration content
         let mut config_content = String::new();
 
-        // Basic configuration
         config_content.push_str("[req]\n");
         config_content.push_str("distinguished_name = req_distinguished_name\n");
-        config_content.push_str(&format!("default_bits = {}\n", self.key_size));
+
+        match &self.key_algorithm {
+            KeyAlgorithm::Rsa2048 => {
+                config_content.push_str("default_bits = 2048\n");
+                config_content.push_str(&format!("default_md = {}\n", self.hash_algorithm));
+            }
+            KeyAlgorithm::Rsa3072 => {
+                config_content.push_str("default_bits = 3072\n");
+                config_content.push_str(&format!("default_md = {}\n", self.hash_algorithm));
+            }
+            KeyAlgorithm::Rsa4096 => {
+                config_content.push_str("default_bits = 4096\n");
+                config_content.push_str(&format!("default_md = {}\n", self.hash_algorithm));
+            }
+            KeyAlgorithm::EcdsaP256 => {
+                config_content.push_str("default_md = sha256\n");
+            }
+            KeyAlgorithm::EcdsaP384 => {
+                config_content.push_str("default_md = sha384\n");
+            }
+        }
+
         config_content.push_str("prompt = no\n");
-        config_content.push_str(&format!("default_md = {}\n", self.hash_algorithm));
-        config_content.push_str("encrypt_key = no\n");      // Equivalent to -nodes option
+        config_content.push_str("encrypt_key = no\n");
+
         let keyfile_name = if self.common_name.starts_with("*.") {
             self.common_name.replacen("*.", "wildcard.", 1)
         } else {
-            self.common_name.to_string()
+            self.common_name.clone()
         };
 
-        config_content.push_str(&format!("default_keyfile = {}.key\n", keyfile_name));
-
-        if !self.san.is_empty() {
-            config_content.push_str("req_extensions = v3_req\n");
+        // RSA uses default_keyfile; ECDSA key is generated separately and passed via -key flag
+        match &self.key_algorithm {
+            KeyAlgorithm::Rsa2048 | KeyAlgorithm::Rsa3072 | KeyAlgorithm::Rsa4096 => {
+                config_content.push_str(&format!("default_keyfile = {}.key\n", keyfile_name));
+            }
+            KeyAlgorithm::EcdsaP256 | KeyAlgorithm::EcdsaP384 => {}
         }
 
-        // Distinguished name section
+        config_content.push_str("req_extensions = v3_req\n");
+
         config_content.push_str("\n[req_distinguished_name]\n");
         config_content.push_str(&format!("C = {}\n", self.country));
-        config_content.push_str(&format!("ST = {}\n", sanitize_for_cert_field(self.state)));
-        config_content.push_str(&format!("L = {}\n", sanitize_for_cert_field(self.locality)));
+        config_content.push_str(&format!("ST = {}\n", sanitize_for_cert_field(&self.state)));
+        config_content.push_str(&format!("L = {}\n", sanitize_for_cert_field(&self.locality)));
 
-        // Optional street address and postal code
-        if let Some(street) = self.street_address {
+        if let Some(street) = &self.street_address {
             if !street.trim().is_empty() {
                 config_content.push_str(&format!("street = {}\n", sanitize_for_cert_field(street)));
             }
         }
 
-        if let Some(postal) = self.postal_code {
+        if let Some(postal) = &self.postal_code {
             if !postal.trim().is_empty() {
                 config_content.push_str(&format!("postalCode = {}\n", postal));
             }
         }
 
-        config_content.push_str(&format!("O = {}\n", sanitize_for_cert_field(self.organization)));
+        config_content.push_str(&format!("O = {}\n", sanitize_for_cert_field(&self.organization)));
 
-        // Optional OU
-        if let Some(ou) = self.organizational_unit {
+        if let Some(ou) = &self.organizational_unit {
             if !ou.trim().is_empty() {
                 config_content.push_str(&format!("OU = {}\n", sanitize_for_cert_field(ou)));
             }
@@ -241,21 +278,34 @@ impl<'a> CertConfig<'a> {
 
         config_content.push_str(&format!("CN = {}\n", self.common_name));
 
-        if let Some(email_addr) = self.email {
+        if let Some(email_addr) = &self.email {
             if !email_addr.trim().is_empty() {
                 config_content.push_str(&format!("emailAddress = {}\n", email_addr));
             }
         }
 
+        config_content.push_str("\n[v3_req]\n");
+
+        let key_usage = match (&self.key_algorithm, &self.cert_purpose) {
+            (KeyAlgorithm::EcdsaP256 | KeyAlgorithm::EcdsaP384, _) => {
+                "critical, digitalSignature"
+            }
+            (_, CertPurpose::TlsServer) => "critical, digitalSignature, keyEncipherment",
+            (_, CertPurpose::TlsClient) => "critical, digitalSignature",
+        };
+        config_content.push_str(&format!("keyUsage = {}\n", key_usage));
+
+        let ext_key_usage = match &self.cert_purpose {
+            CertPurpose::TlsServer => "serverAuth",
+            CertPurpose::TlsClient => "clientAuth",
+        };
+        config_content.push_str(&format!("extendedKeyUsage = {}\n", ext_key_usage));
+
         if !self.san.is_empty() {
-            // Extensions section
-            config_content.push_str("[v3_req]\n");
             config_content.push_str("subjectAltName = @alt_names\n\n");
 
-            // Alternative names section
             config_content.push_str("[alt_names]\n");
             for (i, san) in self.san.iter().enumerate() {
-                // Check if it's an IP address or DNS name (simple check)
                 if san.parse::<std::net::IpAddr>().is_ok() {
                     config_content.push_str(&format!("IP.{} = {}\n", i + 1, san));
                 } else {
@@ -263,6 +313,7 @@ impl<'a> CertConfig<'a> {
                 }
             }
         }
+
         Ok(config_content)
     }
 }

@@ -10,7 +10,7 @@ use fake::Fake;
 #[cfg(debug_assertions)]
 use fake::RngExt;
 use log::LevelFilter;
-use cert_config::CertConfig;
+use cert_config::{CertConfig, KeyAlgorithm, CertPurpose};
 
 mod components;
 mod cert_config;
@@ -54,7 +54,7 @@ fn main() -> eframe::Result {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_min_inner_size([800.0, 700.0])
-            .with_inner_size([800.0, 800.0])
+            .with_inner_size([800.0, 1100.0])
             .with_title("OpenSSL Certificate Request Generator")
             .with_icon(icon),
         ..Default::default()
@@ -82,8 +82,9 @@ pub struct CertGenApp {
     pub email: String,
     pub street_address: String,
     pub postal_code: String,
-    pub key_size: String,
+    pub key_algorithm: KeyAlgorithm,
     pub hash_algorithm: String,
+    pub cert_purpose: CertPurpose,
 
     // Output state
     pub openssl_output: String,
@@ -91,6 +92,7 @@ pub struct CertGenApp {
     pub key_content: String,
     pub csr_content: String,
     pub is_executing: bool,
+    pub pending_cert: Option<std::sync::mpsc::Receiver<execute_button::CertGenResult>>,
 }
 
 impl CertGenApp {
@@ -120,13 +122,15 @@ impl CertGenApp {
             email: String::new(),
             street_address: String::new(),
             postal_code: String::new(),
-            key_size: "2048".to_string(),
+            key_algorithm: KeyAlgorithm::Rsa2048,
             hash_algorithm: "sha256".to_string(),
+            cert_purpose: CertPurpose::TlsServer,
             openssl_output: String::new(),
             config_output: String::new(),
             key_content: String::new(),
             csr_content: String::new(),
             is_executing: false,
+            pending_cert: None,
         }
     }
 
@@ -161,8 +165,9 @@ impl CertGenApp {
         self.email.clear();
         self.street_address.clear();
         self.postal_code.clear();
-        self.key_size = "2048".to_string();
+        self.key_algorithm = KeyAlgorithm::Rsa2048;
         self.hash_algorithm = "sha256".to_string();
+        self.cert_purpose = CertPurpose::TlsServer;
         self.openssl_output.clear();
         self.config_output.clear();
         self.key_content.clear();

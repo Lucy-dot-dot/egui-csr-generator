@@ -7,9 +7,9 @@ pub mod openssloutput;
 pub mod save_button;
 pub mod execute_button;
 
-pub fn generate_and_save(cnf: &str, name: &str, key: &str, csr: &str) -> std::io::Result<()> {
+pub fn generate_and_save(cnf: &str, name: &str, key: &str, csr: &str, recreate_cmd: &str) -> std::io::Result<()> {
     log::debug!("Generating and saving files to zip");
-    log::debug!("Contents: \n{name}.cnf = {cnf}\n\n{name}.key = {key}\n\n{name}.csr = {csr}\n\ncommand: openssl req -new -out {name}.csr -config {name}.cnf");
+    log::debug!("Contents: \n{name}.cnf = {cnf}\n\n{name}.key = {key}\n\n{name}.csr = {csr}\n\ncommand: {recreate_cmd}");
     // Create zip file in memory
     let mut zip_buffer = Cursor::new(Vec::new());
     let mut zip = ZipWriter::new(&mut zip_buffer);
@@ -26,7 +26,7 @@ pub fn generate_and_save(cnf: &str, name: &str, key: &str, csr: &str) -> std::io
     zip.write_all(csr.as_bytes())?;
 
     zip.start_file("recreate_command.txt", options)?;
-    zip.write_all(format!("openssl req -new -out {}.csr -config {}.cnf", name, name).as_bytes())?;
+    zip.write_all(recreate_cmd.as_bytes())?;
 
     // Finalize the zip
     zip.finish()?;
