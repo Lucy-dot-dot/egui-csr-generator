@@ -277,6 +277,9 @@ impl CertConfig {
 
         config_content.push_str("\n[v3_req]\n");
 
+        // There are no CA certificates in ba sing se
+        config_content.push_str("basicConstraints = critical, CA:FALSE\n");
+
         let key_usage = match (&self.key_algorithm, &self.cert_purpose) {
             (KeyAlgorithm::EcdsaP256 | KeyAlgorithm::EcdsaP384, _) => {
                 "critical, digitalSignature"
