@@ -99,7 +99,12 @@ fn run_generation(config: CertConfig, config_output: String, file_common_name: S
                     }
                     Err(err) => {
                         log::error!("{}", err);
-                        messages.push_str(&format!("Failed to auto save generated zip: {}\n", err));
+                        if err.kind() == std::io::ErrorKind::Interrupted {
+                            messages.push_str("Zip save cancelled.\n");
+                        } else {
+                            log::error!("{}", err);
+                            messages.push_str(&format!("Failed to save generated zip: {}\n", err));
+                        }
                     }
                 }
             }

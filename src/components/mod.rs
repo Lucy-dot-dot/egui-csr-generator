@@ -1,6 +1,7 @@
 use std::fs;
 use zip::{ZipWriter, write::SimpleFileOptions};
 use std::io::{Write, Cursor};
+use rfd::FileDialog;
 
 pub mod form;
 pub mod output;
@@ -34,30 +35,19 @@ pub fn save_certificate_files_to_zip(cnf: &str, name: &str, key: &str, csr: &str
     // Get the zip data
     let zip_data = zip_buffer.into_inner();
 
-    if let Some(path) = dirs::download_dir() {
-        let target = path.join(format!("{}_certificate_files.zip", name));
-        if target.exists() {
-            log::info!("Target location already exists, finding alternative name");
-            // you have other issues if you exhaust 100.000 files in your downloads folder
-            for i in 1..100_000 {
-                let alt_name = format!("{}_certificate_files_{}.zip", name, i);
-                let alt_path = path.join(alt_name.clone());
-                log::debug!("Checking if {} exists", alt_path.display());
-                if !alt_path.exists() {
-                    log::info!("Alternative name {} not found, writing to {}", alt_name, target.display());
-                    fs::write(alt_path, zip_data)?;
-                    return Ok(());
-                } else {
-                    log::info!("Alternative name {} already exists, next attempt", alt_name);
-                }
-            }
-        } else {
-            log::info!("Writing zip to {}", target.display());
-            fs::write(target, zip_data)?;
-        }
+    let default_name = format!("{}_certificate_files.zip", name);
+
+    if let Some(target_path) = FileDialog::new()
+        .set_file_name(&default_name)
+        .add_filter("ZIP Archive", &["zip"])
+        .save_file()
+    {
+        log::info!("Writing zip to {}", target_path.display());
+        fs::write(target_path, zip_data)?;
+        Ok(())
     } else {
-        log::error!("Could not find downloads folder");
-        return Err(std::io::Error::new(std::io::ErrorKind::NotFound, "Unable to determine downloads folder path"));
+        log::info!("User cancelled the save dialog");
+        // Return an interrupted error so the UI knows it wasn't a real failure
+        Err(std::io::Error::new(std::io::ErrorKind::Interrupted, "Save cancelled by user"))
     }
-    Ok(())
 }
