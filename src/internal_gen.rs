@@ -1,7 +1,7 @@
 use std::io;
 use rsa::RsaPrivateKey;
 use rsa::pkcs8::{EncodePrivateKey, LineEnding};
-use rcgen::{CertificateParams, DistinguishedName, DnType, SanType, KeyPair};
+use rcgen::{CertificateParams, DistinguishedName, DnType, SanType, KeyPair, IsCa};
 use rcgen::{PKCS_RSA_SHA256, PKCS_RSA_SHA384, PKCS_RSA_SHA512};
 use rcgen::{PKCS_ECDSA_P256_SHA256, PKCS_ECDSA_P384_SHA384};
 use rcgen::{KeyUsagePurpose, ExtendedKeyUsagePurpose};
@@ -106,6 +106,9 @@ pub fn generate_cert_request(config: &CertConfig) -> io::Result<GeneratedCert> {
         CertPurpose::TlsServer => vec![ExtendedKeyUsagePurpose::ServerAuth],
         CertPurpose::TlsClient => vec![ExtendedKeyUsagePurpose::ClientAuth],
     };
+
+    // We don't generate CA certificates in this application
+    params.is_ca = IsCa::ExplicitNoCa;
 
     log::debug!("Using params: {:?}", params);
 

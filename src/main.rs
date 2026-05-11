@@ -286,10 +286,8 @@ impl eframe::App for CertGenApp {
                 // Buttons
                 ui.horizontal(|ui| {
                     #[cfg(debug_assertions)]
-                    {
-                        if ui.button("Fake input").clicked() {
-                            self.fake_input();
-                        }
+                    if ui.button("Fake input").clicked() {
+                        self.fake_input();
                     }
 
                     // Execute button component

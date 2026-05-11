@@ -73,7 +73,9 @@ fn spawn_generation(app: &mut CertGenApp, ctx: egui::Context) {
     app.is_executing = true;
 
     std::thread::spawn(move || {
+        log::debug!("Starting certificate request generation in background thread");
         let result = run_generation(config, config_output, file_common_name);
+        log::debug!("Certificate request generation finished in background thread");
         let _ = tx.send(result);
         ctx.request_repaint();
     });
