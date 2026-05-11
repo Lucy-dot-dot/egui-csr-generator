@@ -20,7 +20,6 @@ mod internal_gen;
 use components::form;
 use components::output;
 use components::execute_button;
-use components::save_button;
 #[cfg(debug_assertions)]
 use crate::cert_config::sanitize;
 
@@ -295,11 +294,6 @@ impl eframe::App for CertGenApp {
 
                     // Execute button component
                     execute_button::render(ui, self);
-
-                    // Save button component (only show if we have key and csr)
-                    if !self.key_content.is_empty() && !self.csr_content.is_empty() {
-                        save_button::render(ui, self);
-                    }
                 });
 
                 ui.add_space(10.0);

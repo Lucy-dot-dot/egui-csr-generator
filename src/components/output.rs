@@ -17,6 +17,7 @@ pub fn render(ui: &mut egui::Ui, config_preview: &str, command_output: &str) {
                     .id_salt("config_preview_scroll")
                     .show(ui, |ui| {
                         ui.add(
+                            // Feature. Not Bug. Copyable and Selectable but not changeable
                             egui::TextEdit::multiline(&mut config_preview.to_string())
                                 .font(egui::TextStyle::Monospace)
                                 .desired_width(f32::INFINITY)

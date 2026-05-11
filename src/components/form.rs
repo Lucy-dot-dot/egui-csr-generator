@@ -171,14 +171,16 @@ pub fn render(ui: &mut egui::Ui, app: &mut CertGenApp) {
 
                 // Update or add CN as first SAN when it changes
                 if response.response.changed() {
-                    let cn_len = app.common_name.chars().count();
+                    let cn_len = app.common_name.chars().count() as isize;
                     app.common_name = sanitize(&app.common_name);
-                    if cn_len != app.common_name.chars().count() {
+                    let new_len = app.common_name.chars().count() as isize;
+                    if cn_len != new_len {
                         let text_edit_id = response.response.id;
 
                         if let Some(mut state) = egui::TextEdit::load_state(ui.ctx(), text_edit_id) &&
                             let Some(cursor) = state.cursor.char_range() {
-                            let new_pos = cursor.primary.index + 1;
+
+                            let new_pos = ((cursor.primary.index as isize) + (new_len - cn_len)).max(0) as usize;
                             let ccursor = egui::text::CCursor::new(new_pos);
                             state
                                 .cursor
@@ -192,7 +194,7 @@ pub fn render(ui: &mut egui::Ui, app: &mut CertGenApp) {
                         if app.sans.is_empty() {
                             app.sans.push(app.common_name.clone());
                         } else {
-                            app.sans[0] = app.common_name.clone();
+                            app.sans.insert(0, app.common_name.clone());
                         }
                     } else if !app.sans.is_empty() {
                         app.sans.remove(0);

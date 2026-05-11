@@ -4,7 +4,6 @@ use std::io::{Write, Cursor};
 
 pub mod form;
 pub mod output;
-pub mod save_button;
 pub mod execute_button;
 
 /// The generated zip file does not use compression, the files are not even 5kb big.
