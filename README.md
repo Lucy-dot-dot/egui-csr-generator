@@ -105,6 +105,10 @@ Click **Import config** and select either a `config.toml` file or a previously g
 - **Wildcard Certificates**: a Common Name starting with `*.` is automatically converted for filenames (e.g. `*.example.com` becomes `wildcard.example.com.key`)
 - **Debug Mode**: in debug builds, a "Fake input" button generates test data using a German locale
 
+## Attributions
+
+This application bundles the [JetBrains Mono](https://www.jetbrains.com/lp/mono/) typeface, licensed under the [Apache License, Version 2.0](https://www.apache.org/licenses/LICENSE-2.0). © JetBrains s.r.o.
+
 ## License
 
 The project is dual licensed under the Unlicense and under GNU GENERAL PUBLIC LICENSE version 3
