@@ -5,7 +5,7 @@ use std::io::{BufWriter, Write};
 use std::path::PathBuf;
 use std::sync::Arc;
 use eframe::{egui, CreationContext, Frame};
-use egui::Ui;
+use egui::{Context, Ui};
 #[cfg(debug_assertions)]
 use fake::Fake;
 #[cfg(debug_assertions)]
@@ -267,8 +267,11 @@ impl CertGenApp {
 }
 
 impl eframe::App for CertGenApp {
+    fn logic(&mut self, _ctx: &Context, _frame: &mut Frame) {
+        self.update_config_preview();
+    }
     fn ui(&mut self, ui: &mut Ui, _frame: &mut Frame) {
-        egui::CentralPanel::default().show_inside(ui, |ui| {
+        egui::CentralPanel::default().show(ui, |ui| {
             ui.vertical_centered(|ui| {
                 ui.heading("X.509 Certificate Request Generator");
             });
@@ -280,8 +283,6 @@ impl eframe::App for CertGenApp {
                 form::render(ui, self);
 
                 ui.add_space(10.0);
-
-                self.update_config_preview();
 
                 // Buttons
                 ui.horizontal(|ui| {

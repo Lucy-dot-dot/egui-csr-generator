@@ -180,7 +180,7 @@ pub fn render(ui: &mut egui::Ui, app: &mut CertGenApp) {
                         if let Some(mut state) = egui::TextEdit::load_state(ui.ctx(), text_edit_id) &&
                             let Some(cursor) = state.cursor.char_range() {
 
-                            let new_pos = ((cursor.primary.index as isize) + (new_len - cn_len)).max(0) as usize;
+                            let new_pos = ((cursor.primary.index.0 as isize) + (new_len - cn_len)).max(0) as usize;
                             let ccursor = egui::text::CCursor::new(new_pos);
                             state
                                 .cursor
