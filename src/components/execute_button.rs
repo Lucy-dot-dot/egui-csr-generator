@@ -88,8 +88,16 @@ fn run_generation(config: CertConfig, config_output: String, file_common_name: S
         Ok(cert) => {
             messages.push_str("Certificate request generated successfully!\n");
             if !cert.key_pem.is_empty() && !cert.csr_pem.is_empty() {
+                let toml_config = match config.to_toml() {
+                    Ok(t) => t,
+                    Err(e) => {
+                        log::error!("Failed to serialize config.toml: {}", e);
+                        messages.push_str(&format!("Failed to serialize config.toml: {}\n", e));
+                        String::new()
+                    }
+                };
                 let recreate_cmd = build_recreate_command(&config.key_algorithm, &file_common_name);
-                match save_certificate_files_to_zip(&config_output, &file_common_name, &cert.key_pem, &cert.csr_pem, &recreate_cmd) {
+                match save_certificate_files_to_zip(&config_output, &file_common_name, &cert.key_pem, &cert.csr_pem, &recreate_cmd, &toml_config) {
                     Ok(_) => {
                         messages.push_str("Auto saved zip to downloads folder\n");
                         messages.push_str(&format!(

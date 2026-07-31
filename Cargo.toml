@@ -20,6 +20,8 @@ rcgen = { version = "0.14.8", features = ["pem"] }
 rsa = { version = "0.9.10", features = ["sha2"] }
 rand = "0.10.2"
 rfd = "0.17.2"
+toml = "1.1.4"
+serde = { version = "1.0.228", features = ["derive"] }
 
 [build-dependencies]
 winresource = "0.1.27"

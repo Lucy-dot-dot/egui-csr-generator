@@ -198,6 +198,32 @@ impl CertGenApp {
         log::debug!("Form cleared");
     }
 
+    /// Applies an imported [`CertConfig`] to the application state, resetting
+    /// any leftover output state so the imported values are shown cleanly.
+    fn apply_config(&mut self, config: CertConfig) {
+        log::debug!("Applying imported config: {:?}", config);
+        self.country = config.country;
+        self.state = config.state;
+        self.locality = config.locality;
+        self.organization = config.organization;
+        self.common_name = config.common_name;
+        self.sans = config.san;
+        self.current_san.clear();
+        self.organizational_unit = config.organizational_unit.unwrap_or_default();
+        self.email = config.email.unwrap_or_default();
+        self.street_address = config.street_address.unwrap_or_default();
+        self.postal_code = config.postal_code.unwrap_or_default();
+        self.key_algorithm = config.key_algorithm;
+        self.hash_algorithm = config.hash_algorithm;
+        self.cert_purpose = config.cert_purpose;
+        self.key_content.clear();
+        self.csr_content.clear();
+        self.output.clear();
+        self.is_executing = false;
+        self.pending_cert = None;
+        log::debug!("Imported config applied");
+    }
+
     #[cfg(debug_assertions)]
     fn fake_input(&mut self) {
         use fake::faker::name::de_de::{FirstName, LastName};
@@ -289,6 +315,36 @@ impl eframe::App for CertGenApp {
                     #[cfg(debug_assertions)]
                     if ui.button("Fake input").clicked() {
                         self.fake_input();
+                    }
+
+                    // Import config from a zip (config.toml) or a plain config.toml
+                    if ui.add_enabled(!self.is_executing, egui::Button::new("Import config")).clicked()
+                        && let Some(path) = rfd::FileDialog::new()
+                            .add_filter("Config", &["toml"])
+                            .add_filter("ZIP Archive", &["zip"])
+                            .pick_file()
+                    {
+                        match components::read_config_toml(&path) {
+                            Ok(toml_text) => {
+                                match CertConfig::from_toml(&toml_text) {
+                                    Ok(config) => {
+                                        self.output = format!(
+                                            "Imported configuration from {}\n",
+                                            path.display()
+                                        );
+                                        self.apply_config(config);
+                                    }
+                                    Err(e) => {
+                                        log::error!("Failed to parse config.toml: {}", e);
+                                        self.output = format!("Failed to parse config.toml: {}\n", e);
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                log::error!("Failed to read config: {}", e);
+                                self.output = format!("Failed to read config: {}\n", e);
+                            }
+                        }
                     }
 
                     // Execute button component

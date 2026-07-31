@@ -1,7 +1,8 @@
 use std::io;
 use crate::CertGenApp;
+use serde::{Serialize, Deserialize};
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum KeyAlgorithm {
     Rsa2048,
     Rsa3072,
@@ -10,12 +11,13 @@ pub enum KeyAlgorithm {
     EcdsaP384,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum CertPurpose {
     TlsServer,
     TlsClient,
 }
 
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct CertConfig {
     pub country: String,
     pub state: String,
@@ -199,6 +201,18 @@ fn sanitize_internal(input: &str, preserve_spaces: bool) -> String {
 
 impl CertConfig {
 
+    /// Serializes the certificate configuration to a TOML string.
+    pub fn to_toml(&self) -> std::io::Result<String> {
+        toml::to_string_pretty(self)
+            .map_err(|e| io::Error::other(format!("Failed to serialize config to TOML: {}", e)))
+    }
+
+    /// Deserializes a certificate configuration from a TOML string.
+    pub fn from_toml(toml_str: &str) -> std::io::Result<Self> {
+        toml::from_str(toml_str)
+            .map_err(|e| io::Error::other(format!("Failed to parse config from TOML: {}", e)))
+    }
+
     pub fn generate_config(&self) -> io::Result<String> {
         // Validate country code is two letters
         if self.country.len() != 2 {
@@ -315,6 +329,59 @@ impl CertConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn sample_config() -> CertConfig {
+        CertConfig {
+            country: "DE".to_string(),
+            state: "Nordrhein-Westfalen".to_string(),
+            locality: "Münster".to_string(),
+            organization: "Test GmbH".to_string(),
+            organizational_unit: Some("IT Department".to_string()),
+            email: Some("admin@example.com".to_string()),
+            street_address: Some("Hauptstrasse 1".to_string()),
+            postal_code: Some("48143".to_string()),
+            common_name: "mail.example.com".to_string(),
+            san: vec!["mail.example.com".to_string(), "www.example.com".to_string()],
+            key_algorithm: KeyAlgorithm::EcdsaP384,
+            hash_algorithm: "sha384".to_string(),
+            cert_purpose: CertPurpose::TlsClient,
+        }
+    }
+
+    #[test]
+    fn test_toml_roundtrip_preserves_all_fields() {
+        let original = sample_config();
+        let toml_text = original.to_toml().expect("serialization should succeed");
+        let restored = CertConfig::from_toml(&toml_text).expect("deserialization should succeed");
+        assert_eq!(original, restored);
+    }
+
+    #[test]
+    fn test_toml_roundtrip_minimal_config() {
+        let original = CertConfig {
+            country: "US".to_string(),
+            state: "CA".to_string(),
+            locality: "SF".to_string(),
+            organization: "Acme".to_string(),
+            organizational_unit: None,
+            email: None,
+            street_address: None,
+            postal_code: None,
+            common_name: "acme.test".to_string(),
+            san: vec![],
+            key_algorithm: KeyAlgorithm::Rsa4096,
+            hash_algorithm: "sha512".to_string(),
+            cert_purpose: CertPurpose::TlsServer,
+        };
+        let toml_text = original.to_toml().expect("serialization should succeed");
+        let restored = CertConfig::from_toml(&toml_text).expect("deserialization should succeed");
+        assert_eq!(original, restored);
+    }
+
+    #[test]
+    fn test_from_toml_rejects_invalid_input() {
+        assert!(CertConfig::from_toml("this is not toml {{{").is_err());
+    }
 
     #[test]
     fn test_sanitize_german_characters() {
