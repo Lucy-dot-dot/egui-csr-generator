@@ -1,27 +1,27 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::fs::File;
-use std::io::{BufWriter, Write};
-use std::path::PathBuf;
-use std::sync::Arc;
-use eframe::{egui, CreationContext, Frame};
+use cert_config::{CertConfig, CertPurpose, KeyAlgorithm, KeyEncoding, RsaKeyFormat};
+use eframe::{CreationContext, Frame, egui};
 use egui::{Context, Ui};
 #[cfg(debug_assertions)]
 use fake::Fake;
 #[cfg(debug_assertions)]
 use fake::RngExt;
 use log::LevelFilter;
-use cert_config::{CertConfig, KeyAlgorithm, CertPurpose};
+use std::fs::File;
+use std::io::{BufWriter, Write};
+use std::path::PathBuf;
+use std::sync::Arc;
 
-mod components;
 mod cert_config;
+mod components;
 mod internal_gen;
 
-use components::form;
-use components::output;
-use components::execute_button;
 #[cfg(debug_assertions)]
 use crate::cert_config::sanitize;
+use components::execute_button;
+use components::form;
+use components::output;
 
 fn setup_logger() {
     let current_time = time::OffsetDateTime::now_local().unwrap_or(time::OffsetDateTime::now_utc());
@@ -45,19 +45,22 @@ fn setup_logger() {
     let mut builder = env_logger::Builder::new();
 
     let builder = match target {
-        None => { &mut builder }
-        Some(target) => { builder.target(target) }
+        None => &mut builder,
+        Some(target) => builder.target(target),
     };
 
     builder
         .filter(None, LevelFilter::Debug)
         .format(|buf, record| {
             let now = time::OffsetDateTime::now_local().unwrap_or(time::OffsetDateTime::now_utc());
-            let format = time::macros::format_description!("[year]-[month]-[day] [hour]:[minute]:[second].[subsecond digits:3]");
+            let format = time::macros::format_description!(
+                "[year]-[month]-[day] [hour]:[minute]:[second].[subsecond digits:3]"
+            );
             writeln!(
                 buf,
                 "[{} {} {}:{}] {}",
-                now.format(&format).unwrap_or_else(|_| "unknown".to_string()),
+                now.format(&format)
+                    .unwrap_or_else(|_| "unknown".to_string()),
                 record.level(),
                 record.file().unwrap_or("unknown"),
                 record.line().unwrap_or(0),
@@ -65,13 +68,15 @@ fn setup_logger() {
             )
         })
         .init();
-
 }
 
 fn main() -> eframe::Result {
     setup_logger();
 
-    let icon = Arc::new(eframe::icon_data::from_png_bytes(include_bytes!("../icon.png")).expect("Failed to load icon"));
+    let icon = Arc::new(
+        eframe::icon_data::from_png_bytes(include_bytes!("../icon.png"))
+            .expect("Failed to load icon"),
+    );
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_min_inner_size([800.0, 700.0])
@@ -107,11 +112,17 @@ pub struct CertGenApp {
     pub hash_algorithm: String,
     pub cert_purpose: CertPurpose,
 
+    // Export options — app-only state, never serialized into config.toml.
+    // (The passphrase in particular must never be persisted.)
+    pub key_encoding: KeyEncoding,
+    pub rsa_key_format: RsaKeyFormat,
+    pub passphrase: String,
+    pub use_existing_key: bool,
+    pub existing_key_pem: String,
+
     // Output state
     pub output: String,
     pub config_output: String,
-    pub key_content: String,
-    pub csr_content: String,
     pub is_executing: bool,
     pub pending_cert: Option<std::sync::mpsc::Receiver<execute_button::CertGenResult>>,
 }
@@ -120,14 +131,28 @@ impl CertGenApp {
     fn new(cc: &CreationContext) -> Self {
         log::debug!("Initializing app, creating font");
         let mut fonts = egui::FontDefinitions::default();
-        fonts.font_data.insert("JetBrainsMono".to_owned(), Arc::from(egui::FontData::from_static(include_bytes!("../assets/JetBrainsMono-Regular.ttf"))));
+        fonts.font_data.insert(
+            "JetBrainsMono".to_owned(),
+            Arc::from(egui::FontData::from_static(include_bytes!(
+                "../assets/JetBrainsMono-Regular.ttf"
+            ))),
+        );
 
-        fonts.families.insert(egui::FontFamily::Name("JetBrainsMono".into()), vec!["JetBrainsMono".to_owned()]);
+        fonts.families.insert(
+            egui::FontFamily::Name("JetBrainsMono".into()),
+            vec!["JetBrainsMono".to_owned()],
+        );
 
-        fonts.families.get_mut(&egui::FontFamily::Proportional).expect("egui default font families missing")
+        fonts
+            .families
+            .get_mut(&egui::FontFamily::Proportional)
+            .expect("egui default font families missing")
             .insert(0, "JetBrainsMono".to_owned());
 
-        fonts.families.get_mut(&egui::FontFamily::Monospace).expect("egui default font families missing")
+        fonts
+            .families
+            .get_mut(&egui::FontFamily::Monospace)
+            .expect("egui default font families missing")
             .insert(0, "JetBrainsMono".to_owned());
         cc.egui_ctx.set_fonts(fonts);
         log::debug!("Initializing app, done");
@@ -146,10 +171,13 @@ impl CertGenApp {
             key_algorithm: KeyAlgorithm::Rsa2048,
             hash_algorithm: "sha256".to_string(),
             cert_purpose: CertPurpose::TlsServer,
+            key_encoding: KeyEncoding::Pem,
+            rsa_key_format: RsaKeyFormat::Pkcs8,
+            passphrase: String::new(),
+            use_existing_key: false,
+            existing_key_pem: String::new(),
             output: String::new(),
             config_output: String::new(),
-            key_content: String::new(),
-            csr_content: String::new(),
             is_executing: false,
             pending_cert: None,
         }
@@ -189,10 +217,13 @@ impl CertGenApp {
         self.key_algorithm = KeyAlgorithm::Rsa2048;
         self.hash_algorithm = "sha256".to_string();
         self.cert_purpose = CertPurpose::TlsServer;
+        self.key_encoding = KeyEncoding::Pem;
+        self.rsa_key_format = RsaKeyFormat::Pkcs8;
+        self.passphrase.clear();
+        self.use_existing_key = false;
+        self.existing_key_pem.clear();
         self.output.clear();
         self.config_output.clear();
-        self.key_content.clear();
-        self.csr_content.clear();
         self.is_executing = false;
         self.pending_cert = None;
         log::debug!("Form cleared");
@@ -216,8 +247,12 @@ impl CertGenApp {
         self.key_algorithm = config.key_algorithm;
         self.hash_algorithm = config.hash_algorithm;
         self.cert_purpose = config.cert_purpose;
-        self.key_content.clear();
-        self.csr_content.clear();
+        // Export options are not part of the imported identity; reset them.
+        self.key_encoding = KeyEncoding::Pem;
+        self.rsa_key_format = RsaKeyFormat::Pkcs8;
+        self.passphrase.clear();
+        self.use_existing_key = false;
+        self.existing_key_pem.clear();
         self.output.clear();
         self.is_executing = false;
         self.pending_cert = None;
@@ -226,11 +261,11 @@ impl CertGenApp {
 
     #[cfg(debug_assertions)]
     fn fake_input(&mut self) {
+        use fake::faker::address::de_de::{BuildingNumber, StreetName, ZipCode};
+        use fake::faker::internet::de_de::{DomainSuffix, IP};
+        use fake::faker::job::de_de::Title;
         use fake::faker::name::de_de::{FirstName, LastName};
         use fake::faker::name::en::LastName as enLastName;
-        use fake::faker::job::de_de::Title;
-        use fake::faker::address::de_de::{StreetName, BuildingNumber, ZipCode};
-        use fake::faker::internet::de_de::{DomainSuffix, IP};
 
         let fake_company: String = fake::faker::company::de_de::CompanyName().fake();
         let fake_domain = format!(
@@ -258,9 +293,9 @@ impl CertGenApp {
             if rand::random_bool(0.2) {
                 san_list.push(IP().fake::<String>());
             } else {
-                let subdomain = sanitize(fake::faker::company::en::BsNoun().fake::<&str>()).to_ascii_lowercase();
+                let subdomain = sanitize(fake::faker::company::en::BsNoun().fake::<&str>())
+                    .to_ascii_lowercase();
                 san_list.push(format!("{}.{}", subdomain, fake_domain));
-
             }
         }
 
@@ -275,7 +310,17 @@ impl CertGenApp {
         // Generate postal code
         let fake_postal: String = ZipCode().fake();
 
-        log::debug!("Faking input with: \n\tCompany: {}\n\tDomain: {}\n\tState: {}\n\tLocality: {}\n\tEmail: {}\n\tStreet: {}\n\tPostal: {}\n\tOU: {}\n", fake_company, fake_domain, fake_state, fake_locality, fake_email, fake_street, fake_postal, fake_ou);
+        log::debug!(
+            "Faking input with: \n\tCompany: {}\n\tDomain: {}\n\tState: {}\n\tLocality: {}\n\tEmail: {}\n\tStreet: {}\n\tPostal: {}\n\tOU: {}\n",
+            fake_company,
+            fake_domain,
+            fake_state,
+            fake_locality,
+            fake_email,
+            fake_street,
+            fake_postal,
+            fake_ou
+        );
 
         self.organizational_unit = fake_ou;
         self.email = fake_email;
@@ -288,7 +333,6 @@ impl CertGenApp {
         self.organization = fake_company;
         self.common_name = fake_domain.clone();
         self.sans = san_list;
-
     }
 }
 
@@ -318,28 +362,26 @@ impl eframe::App for CertGenApp {
                     }
 
                     // Import config from a zip (config.toml) or a plain config.toml
-                    if ui.add_enabled(!self.is_executing, egui::Button::new("Import config")).clicked()
+                    if ui
+                        .add_enabled(!self.is_executing, egui::Button::new("Import config"))
+                        .clicked()
                         && let Some(path) = rfd::FileDialog::new()
                             .add_filter("Config", &["toml"])
                             .add_filter("ZIP Archive", &["zip"])
                             .pick_file()
                     {
                         match components::read_config_toml(&path) {
-                            Ok(toml_text) => {
-                                match CertConfig::from_toml(&toml_text) {
-                                    Ok(config) => {
-                                        self.output = format!(
-                                            "Imported configuration from {}\n",
-                                            path.display()
-                                        );
-                                        self.apply_config(config);
-                                    }
-                                    Err(e) => {
-                                        log::error!("Failed to parse config.toml: {}", e);
-                                        self.output = format!("Failed to parse config.toml: {}\n", e);
-                                    }
+                            Ok(toml_text) => match CertConfig::from_toml(&toml_text) {
+                                Ok(config) => {
+                                    self.output =
+                                        format!("Imported configuration from {}\n", path.display());
+                                    self.apply_config(config);
                                 }
-                            }
+                                Err(e) => {
+                                    log::error!("Failed to parse config.toml: {}", e);
+                                    self.output = format!("Failed to parse config.toml: {}\n", e);
+                                }
+                            },
                             Err(e) => {
                                 log::error!("Failed to read config: {}", e);
                                 self.output = format!("Failed to read config: {}\n", e);

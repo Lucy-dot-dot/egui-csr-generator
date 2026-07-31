@@ -30,7 +30,9 @@ pub fn render(ui: &mut egui::Ui, config_preview: &str, command_output: &str) {
 
     if has_command_output {
         let heading = if has_error {
-            egui::RichText::new("Error while processing input").strong().color(egui::Color32::RED)
+            egui::RichText::new("Error while processing input")
+                .strong()
+                .color(egui::Color32::RED)
         } else {
             egui::RichText::new("Process Output")
         };
@@ -52,6 +54,10 @@ pub fn render(ui: &mut egui::Ui, config_preview: &str, command_output: &str) {
                     });
             });
     } else if config_preview.is_empty() {
-        ui.label(egui::RichText::new("Fill in the required fields to see the config preview").weak().italics());
+        ui.label(
+            egui::RichText::new("Fill in the required fields to see the config preview")
+                .weak()
+                .italics(),
+        );
     }
 }

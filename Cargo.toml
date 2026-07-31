@@ -18,6 +18,9 @@ env_logger = "0.11.11"
 time = { version = "0.3.54", features = ["local-offset", "formatting", "macros"] }
 rcgen = { version = "0.14.8", features = ["pem"] }
 rsa = { version = "0.9.10", features = ["sha2"] }
+# Force the `encryption` feature onto pkcs8 (already pulled transitively by rsa,
+# but without encryption). Used for passphrase-protected key export.
+pkcs8 = { version = "0.10", features = ["encryption", "pem", "alloc"] }
 rand = "0.10.2"
 rfd = "0.17.2"
 toml = "1.1.4"

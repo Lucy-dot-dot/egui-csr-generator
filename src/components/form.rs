@@ -1,6 +1,6 @@
-use eframe::egui;
 use crate::CertGenApp;
-use crate::cert_config::{KeyAlgorithm, CertPurpose, sanitize};
+use crate::cert_config::{CertPurpose, KeyAlgorithm, KeyEncoding, RsaKeyFormat, sanitize};
+use eframe::egui;
 
 fn is_valid_san(san: &str) -> bool {
     if san.is_empty() {
@@ -15,7 +15,10 @@ fn is_valid_san(san: &str) -> bool {
         return false;
     }
     // Valid chars for a DNS label sequence: letters, digits, hyphens, dots
-    if !check.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '.') {
+    if !check
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '.')
+    {
         return false;
     }
     if check.contains("..") {
@@ -116,6 +119,7 @@ pub fn render(ui: &mut egui::Ui, app: &mut CertGenApp) {
                         KeyAlgorithm::Rsa4096 => "RSA 4096",
                         KeyAlgorithm::EcdsaP256 => "ECDSA P-256",
                         KeyAlgorithm::EcdsaP384 => "ECDSA P-384",
+                        KeyAlgorithm::Ed25519 => "Ed25519",
                     };
                     egui::ComboBox::from_id_salt("key_algorithm")
                         .selected_text(algo_label)
@@ -125,6 +129,7 @@ pub fn render(ui: &mut egui::Ui, app: &mut CertGenApp) {
                             ui.selectable_value(&mut app.key_algorithm, KeyAlgorithm::Rsa4096, "RSA 4096");
                             ui.selectable_value(&mut app.key_algorithm, KeyAlgorithm::EcdsaP256, "ECDSA P-256");
                             ui.selectable_value(&mut app.key_algorithm, KeyAlgorithm::EcdsaP384, "ECDSA P-384");
+                            ui.selectable_value(&mut app.key_algorithm, KeyAlgorithm::Ed25519, "Ed25519");
                         });
                 });
 
@@ -157,6 +162,127 @@ pub fn render(ui: &mut egui::Ui, app: &mut CertGenApp) {
                             ui.selectable_value(&mut app.cert_purpose, CertPurpose::TlsClient, "TLS Client");
                         });
                 });
+
+                // Export Options — packaging choices for the generated key/CSR.
+                // These are never written to config.toml.
+                ui.add_space(5.0);
+                ui.label(egui::RichText::new("Export Options").strong());
+                ui.separator();
+
+                // Key Encoding (PEM / DER)
+                ui.horizontal(|ui| {
+                    ui.label("Key Encoding:");
+                    let enc_label = match app.key_encoding {
+                        KeyEncoding::Pem => "PEM (text)",
+                        KeyEncoding::Der => "DER (binary)",
+                    };
+                    egui::ComboBox::from_id_salt("key_encoding")
+                        .selected_text(enc_label)
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(&mut app.key_encoding, KeyEncoding::Pem, "PEM (text)");
+                            ui.selectable_value(&mut app.key_encoding, KeyEncoding::Der, "DER (binary)");
+                        });
+                });
+
+                // RSA container format (PKCS#8 vs PKCS#1) — RSA only.
+                let is_rsa = app.key_algorithm.is_rsa();
+                if is_rsa {
+                    ui.horizontal(|ui| {
+                        ui.label("Key Format:");
+                        let fmt_label = match app.rsa_key_format {
+                            RsaKeyFormat::Pkcs8 => "PKCS#8",
+                            RsaKeyFormat::Pkcs1 => "PKCS#1 (traditional)",
+                        };
+                        let combo = egui::ComboBox::from_id_salt("rsa_key_format")
+                            .selected_text(fmt_label);
+                        combo.show_ui(ui, |ui| {
+                            if ui.selectable_value(&mut app.rsa_key_format, RsaKeyFormat::Pkcs8, "PKCS#8").clicked()
+                                || ui.selectable_value(&mut app.rsa_key_format, RsaKeyFormat::Pkcs1, "PKCS#1 (traditional)").clicked()
+                            {
+                                // PKCS#1 has no passphrase container here; drop any
+                                // passphrase when switching to it to keep behavior explicit.
+                                if app.rsa_key_format == RsaKeyFormat::Pkcs1 {
+                                    app.passphrase.clear();
+                                }
+                            }
+                        });
+                    });
+                }
+
+                // Passphrase (encrypted PKCS#8 export). Disabled for RSA+PKCS#1.
+                let pkcs1_rsa = is_rsa && app.rsa_key_format == RsaKeyFormat::Pkcs1;
+                ui.horizontal(|ui| {
+                    ui.label("Passphrase:");
+                    let edit = egui::TextEdit::singleline(&mut app.passphrase)
+                        .hint_text("(none)")
+                        .password(true)
+                        .desired_width(200.0);
+                    ui.add_enabled(!pkcs1_rsa, edit);
+                    if pkcs1_rsa {
+                        ui.label(
+                            egui::RichText::new("PKCS#1 cannot be encrypted")
+                                .color(egui::Color32::from_rgb(180, 180, 180)),
+                        )
+                        .on_hover_text("Switch to PKCS#8 to enable passphrase protection, or leave the key unencrypted.");
+                    } else if !app.passphrase.is_empty() {
+                        ui.label(egui::RichText::new("encrypted PKCS#8").color(egui::Color32::GREEN));
+                    }
+                });
+
+                // Reuse an existing private key instead of generating a new one.
+                ui.horizontal(|ui| {
+                    if ui.checkbox(&mut app.use_existing_key, "Reuse existing key").clicked()
+                        && !app.use_existing_key
+                    {
+                        app.existing_key_pem.clear();
+                    }
+                    ui.label(
+                        egui::RichText::new("paste an unencrypted PKCS#8 PEM key")
+                            .small()
+                            .weak(),
+                    );
+                });
+                if app.use_existing_key {
+                    ui.horizontal(|ui| {
+                        ui.label("Existing key (PEM):");
+                        if ui.button("Load from file…").clicked()
+                            && let Some(path) = rfd::FileDialog::new()
+                                .add_filter("PEM key", &["pem", "key"])
+                                .pick_file()
+                        {
+                            match std::fs::read_to_string(&path) {
+                                Ok(text) => app.existing_key_pem = text,
+                                Err(e) => {
+                                    log::error!("Failed to read key file: {}", e);
+                                    app.output =
+                                        format!("Failed to read key file {}: {}\n", path.display(), e);
+                                }
+                            }
+                        }
+                    });
+                    egui::TextEdit::multiline(&mut app.existing_key_pem)
+                        .hint_text("-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----")
+                        .desired_width(f32::INFINITY)
+                        .desired_rows(4)
+                        .code_editor()
+                        .show(ui);
+                    if !app.existing_key_pem.trim().is_empty()
+                        && !app.existing_key_pem.contains("BEGIN")
+                    {
+                        ui.label(
+                            egui::RichText::new("This does not look like a PEM key")
+                                .color(egui::Color32::YELLOW),
+                        );
+                    }
+                    if app.existing_key_pem.contains("ENCRYPTED") {
+                        ui.label(
+                            egui::RichText::new(
+                                "Encrypted keys cannot be imported — decrypt first",
+                            )
+                            .color(egui::Color32::YELLOW),
+                        );
+                    }
+                }
 
                 ui.separator();
             };

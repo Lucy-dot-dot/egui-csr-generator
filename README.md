@@ -20,6 +20,13 @@ This project made heavy use of Claude. If you do not trust AI generated code for
 - No external OpenSSL installation required — certificate generation is handled natively
 - Debug mode with test data generation (German locale)
 
+## Intentionally Not Supported
+
+These are deliberate design decisions, not missing features:
+
+- **No Certificate Authority (CA) support.** This tool generates certificate signing requests (CSRs) only. It does not create, sign, or issue certificates, and it cannot act as a CA. If you need a CA, use a dedicated CA tool.
+- **No copy-to-clipboard for the key or CSR.** Generated files are written exclusively to a zip package. Clipboard access is intentionally omitted because people are prone to generating twice and then mismatching a key with its CSR, or losing the key entirely. By forcing everything through a single bundled zip, the key, CSR, and associated files can never get confused or separated.
+
 ## Requirements
 
 - Rust (latest stable version)

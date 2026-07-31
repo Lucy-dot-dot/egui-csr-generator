@@ -1,16 +1,27 @@
-use std::fs;
-use std::io::{Read, Write, Cursor};
-use zip::{ZipWriter, ZipArchive, write::SimpleFileOptions};
 use rfd::FileDialog;
+use std::fs;
+use std::io::{Cursor, Read, Write};
+use zip::{ZipArchive, ZipWriter, write::SimpleFileOptions};
 
+pub mod execute_button;
 pub mod form;
 pub mod output;
-pub mod execute_button;
 
 /// The generated zip file does not use compression, the files are not even 5kb big.
-pub fn save_certificate_files_to_zip(cnf: &str, name: &str, key: &str, csr: &str, recreate_cmd: &str, toml_config: &str) -> std::io::Result<()> {
+pub fn save_certificate_files_to_zip(
+    cnf: &str,
+    name: &str,
+    key: &[u8],
+    csr: &[u8],
+    recreate_cmd: &str,
+    toml_config: &str,
+) -> std::io::Result<()> {
     log::debug!("Generating and saving files to zip");
-    log::debug!("Contents: \n{name}.cnf = {cnf}\n\n{name}.key = {key}\n\n{name}.csr = {csr}\n\ncommand: {recreate_cmd}\n\nconfig.toml = {toml_config}");
+    log::debug!(
+        "Contents: \n{name}.cnf = {cnf}\n\n{name}.key = {} bytes\n\n{name}.csr = {} bytes\n\ncommand: {recreate_cmd}\n\nconfig.toml = {toml_config}",
+        key.len(),
+        csr.len()
+    );
     // Create zip file in memory
     let mut zip_buffer = Cursor::new(Vec::new());
     let mut zip = ZipWriter::new(&mut zip_buffer);
@@ -21,10 +32,10 @@ pub fn save_certificate_files_to_zip(cnf: &str, name: &str, key: &str, csr: &str
     zip.write_all(cnf.as_bytes())?;
 
     zip.start_file(format!("{}.key", name), options)?;
-    zip.write_all(key.as_bytes())?;
+    zip.write_all(key)?;
 
     zip.start_file(format!("{}.csr", name), options)?;
-    zip.write_all(csr.as_bytes())?;
+    zip.write_all(csr)?;
 
     zip.start_file("config.toml", options)?;
     zip.write_all(toml_config.as_bytes())?;
@@ -51,7 +62,10 @@ pub fn save_certificate_files_to_zip(cnf: &str, name: &str, key: &str, csr: &str
     } else {
         log::info!("User cancelled the save dialog");
         // Return an interrupted error so the UI knows it wasn't a real failure
-        Err(std::io::Error::new(std::io::ErrorKind::Interrupted, "Save cancelled by user"))
+        Err(std::io::Error::new(
+            std::io::ErrorKind::Interrupted,
+            "Save cancelled by user",
+        ))
     }
 }
 
@@ -61,7 +75,8 @@ pub fn save_certificate_files_to_zip(cnf: &str, name: &str, key: &str, csr: &str
 /// Detection is based on the file extension: `.zip` is treated as an archive,
 /// everything else is read verbatim as a TOML file.
 pub fn read_config_toml(path: &std::path::Path) -> std::io::Result<String> {
-    let is_zip = path.extension()
+    let is_zip = path
+        .extension()
         .map(|ext| ext.eq_ignore_ascii_case("zip"))
         .unwrap_or(false);
 
@@ -72,7 +87,8 @@ pub fn read_config_toml(path: &std::path::Path) -> std::io::Result<String> {
             .map_err(|e| std::io::Error::other(format!("Failed to read zip archive: {}", e)))?;
 
         for i in 0..archive.len() {
-            let mut entry = archive.by_index(i)
+            let mut entry = archive
+                .by_index(i)
                 .map_err(|e| std::io::Error::other(format!("Failed to read zip entry: {}", e)))?;
             // Match "config.toml" regardless of any contained directory prefix
             let name_matches = entry.name().eq_ignore_ascii_case("config.toml")
@@ -80,11 +96,18 @@ pub fn read_config_toml(path: &std::path::Path) -> std::io::Result<String> {
             if name_matches {
                 let mut content = String::new();
                 entry.read_to_string(&mut content)?;
-                log::debug!("Found config.toml ({} bytes) in zip entry {}", content.len(), i);
+                log::debug!(
+                    "Found config.toml ({} bytes) in zip entry {}",
+                    content.len(),
+                    i
+                );
                 return Ok(content);
             }
         }
-        Err(std::io::Error::new(std::io::ErrorKind::NotFound, "No config.toml found inside the zip archive"))
+        Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "No config.toml found inside the zip archive",
+        ))
     } else {
         log::debug!("Reading config.toml directly from {}", path.display());
         fs::read_to_string(path)
@@ -94,7 +117,7 @@ pub fn read_config_toml(path: &std::path::Path) -> std::io::Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::{Write, Cursor};
+    use std::io::{Cursor, Write};
     use zip::{ZipWriter, write::SimpleFileOptions};
 
     fn sample_toml() -> &'static str {
@@ -209,4 +232,3 @@ cert_purpose = "TlsClient"
         let _ = std::fs::remove_file(&path);
     }
 }
-

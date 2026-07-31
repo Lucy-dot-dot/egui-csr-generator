@@ -1,6 +1,6 @@
-use std::io;
 use crate::CertGenApp;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
+use std::io;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum KeyAlgorithm {
@@ -9,6 +9,75 @@ pub enum KeyAlgorithm {
     Rsa4096,
     EcdsaP256,
     EcdsaP384,
+    Ed25519,
+}
+
+impl KeyAlgorithm {
+    /// Returns `true` for RSA variants (which support a hash-algorithm choice
+    /// and the PKCS#1 export format).
+    pub fn is_rsa(&self) -> bool {
+        matches!(
+            self,
+            KeyAlgorithm::Rsa2048 | KeyAlgorithm::Rsa3072 | KeyAlgorithm::Rsa4096
+        )
+    }
+
+    /// Returns `true` for algorithms whose signature hash is fixed by the
+    /// key type itself (ECDSA curve, Ed25519). For these the hash-algorithm
+    /// selector has no effect.
+    pub fn has_fixed_hash(&self) -> bool {
+        matches!(
+            self,
+            KeyAlgorithm::EcdsaP256 | KeyAlgorithm::EcdsaP384 | KeyAlgorithm::Ed25519
+        )
+    }
+}
+
+/// Output encoding for the exported key and CSR files.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum KeyEncoding {
+    /// ASCII PEM (e.g. `-----BEGIN PRIVATE KEY-----`).
+    #[default]
+    Pem,
+    /// Binary DER.
+    Der,
+}
+
+/// Container format for the exported private key (RSA only).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RsaKeyFormat {
+    /// PKCS#8 — `-----BEGIN PRIVATE KEY-----` (encryptable).
+    #[default]
+    Pkcs8,
+    /// PKCS#1 — `-----BEGIN RSA PRIVATE KEY-----` (traditional, unencrypted only).
+    Pkcs1,
+}
+
+/// App-only export options. These are NOT part of [`CertConfig`] and are never
+/// written to `config.toml` — they describe how the *current* generation should
+/// format its output, not the certificate's identity.
+///
+/// In particular `passphrase` must never be persisted.
+#[derive(Clone, Debug)]
+pub struct ExportOptions {
+    /// PEM or DER encoding for the key and CSR.
+    pub encoding: KeyEncoding,
+    /// PKCS#8 vs PKCS#1 for RSA keys. Ignored for EC/Ed25519 (always PKCS#8).
+    pub rsa_key_format: RsaKeyFormat,
+    /// Optional passphrase. `None` or empty means the key is exported unencrypted.
+    /// When set, the key is exported as an encrypted PKCS#8 document
+    /// (scrypt + AES-256-CBC), regardless of `rsa_key_format`.
+    pub passphrase: Option<String>,
+}
+
+impl Default for ExportOptions {
+    fn default() -> Self {
+        ExportOptions {
+            encoding: KeyEncoding::Pem,
+            rsa_key_format: RsaKeyFormat::Pkcs8,
+            passphrase: None,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -41,10 +110,26 @@ impl From<&CertGenApp> for CertConfig {
             state: value.state.clone(),
             locality: value.locality.clone(),
             organization: value.organization.clone(),
-            organizational_unit: if value.organizational_unit.is_empty() { None } else { Some(value.organizational_unit.clone()) },
-            email: if value.email.is_empty() { None } else { Some(value.email.clone()) },
-            street_address: if value.street_address.is_empty() { None } else { Some(value.street_address.clone()) },
-            postal_code: if value.postal_code.is_empty() { None } else { Some(value.postal_code.clone()) },
+            organizational_unit: if value.organizational_unit.is_empty() {
+                None
+            } else {
+                Some(value.organizational_unit.clone())
+            },
+            email: if value.email.is_empty() {
+                None
+            } else {
+                Some(value.email.clone())
+            },
+            street_address: if value.street_address.is_empty() {
+                None
+            } else {
+                Some(value.street_address.clone())
+            },
+            postal_code: if value.postal_code.is_empty() {
+                None
+            } else {
+                Some(value.postal_code.clone())
+            },
             common_name: value.common_name.clone(),
             san: value.sans.clone(),
             key_algorithm: value.key_algorithm.clone(),
@@ -53,7 +138,6 @@ impl From<&CertGenApp> for CertConfig {
         }
     }
 }
-
 
 /// Sanitizes input for use in filenames and domain names
 /// - Replaces special characters with ASCII equivalents
@@ -182,12 +266,14 @@ fn sanitize_internal(input: &str, preserve_spaces: bool) -> String {
         }
     } else {
         // For filenames: remove leading/trailing hyphens and underscores
-        result = result
-            .trim_matches(|c| c == '-' || c == '_')
-            .to_string();
+        result = result.trim_matches(|c| c == '-' || c == '_').to_string();
 
         // Replace multiple consecutive separators with a single one
-        while result.contains("--") || result.contains("__") || result.contains("-.") || result.contains("._") {
+        while result.contains("--")
+            || result.contains("__")
+            || result.contains("-.")
+            || result.contains("._")
+        {
             result = result
                 .replace("--", "-")
                 .replace("__", "_")
@@ -200,7 +286,6 @@ fn sanitize_internal(input: &str, preserve_spaces: bool) -> String {
 }
 
 impl CertConfig {
-
     /// Serializes the certificate configuration to a TOML string.
     pub fn to_toml(&self) -> std::io::Result<String> {
         toml::to_string_pretty(self)
@@ -216,7 +301,10 @@ impl CertConfig {
     pub fn generate_config(&self) -> io::Result<String> {
         // Validate country code is two letters
         if self.country.len() != 2 {
-            return Err(io::Error::new(io::ErrorKind::InvalidInput, "Country code must be exactly 2 letters"));
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Country code must be exactly 2 letters",
+            ));
         }
 
         let mut config_content = String::new();
@@ -243,6 +331,13 @@ impl CertConfig {
             KeyAlgorithm::EcdsaP384 => {
                 config_content.push_str("default_md = sha384\n");
             }
+            KeyAlgorithm::Ed25519 => {
+                // Ed25519 is not hash-based; OpenSSL derives the digest from the
+                // key itself. We leave default_md unset and document the curve.
+                config_content.push_str(
+                    "# Ed25519: signature algorithm is fixed by the key, default_md is ignored\n",
+                );
+            }
         }
 
         config_content.push_str("prompt = no\n");
@@ -259,7 +354,7 @@ impl CertConfig {
             KeyAlgorithm::Rsa2048 | KeyAlgorithm::Rsa3072 | KeyAlgorithm::Rsa4096 => {
                 config_content.push_str(&format!("default_keyfile = {}.key\n", keyfile_name));
             }
-            KeyAlgorithm::EcdsaP256 | KeyAlgorithm::EcdsaP384 => {}
+            KeyAlgorithm::EcdsaP256 | KeyAlgorithm::EcdsaP384 | KeyAlgorithm::Ed25519 => {}
         }
 
         config_content.push_str("req_extensions = v3_req\n");
@@ -267,25 +362,39 @@ impl CertConfig {
         config_content.push_str("\n[req_distinguished_name]\n");
         config_content.push_str(&format!("C = {}\n", self.country));
         config_content.push_str(&format!("ST = {}\n", sanitize_for_cert_field(&self.state)));
-        config_content.push_str(&format!("L = {}\n", sanitize_for_cert_field(&self.locality)));
+        config_content.push_str(&format!(
+            "L = {}\n",
+            sanitize_for_cert_field(&self.locality)
+        ));
 
-        if let Some(street) = &self.street_address && !street.trim().is_empty() {
+        if let Some(street) = &self.street_address
+            && !street.trim().is_empty()
+        {
             config_content.push_str(&format!("street = {}\n", sanitize_for_cert_field(street)));
         }
 
-        if let Some(postal) = &self.postal_code && !postal.trim().is_empty() {
+        if let Some(postal) = &self.postal_code
+            && !postal.trim().is_empty()
+        {
             config_content.push_str(&format!("postalCode = {}\n", postal));
         }
 
-        config_content.push_str(&format!("O = {}\n", sanitize_for_cert_field(&self.organization)));
+        config_content.push_str(&format!(
+            "O = {}\n",
+            sanitize_for_cert_field(&self.organization)
+        ));
 
-        if let Some(ou) = &self.organizational_unit && !ou.trim().is_empty() {
+        if let Some(ou) = &self.organizational_unit
+            && !ou.trim().is_empty()
+        {
             config_content.push_str(&format!("OU = {}\n", sanitize_for_cert_field(ou)));
         }
 
         config_content.push_str(&format!("CN = {}\n", self.common_name));
 
-        if let Some(email_addr) = &self.email && !email_addr.trim().is_empty() {
+        if let Some(email_addr) = &self.email
+            && !email_addr.trim().is_empty()
+        {
             config_content.push_str(&format!("emailAddress = {}\n", email_addr));
         }
 
@@ -295,7 +404,7 @@ impl CertConfig {
         config_content.push_str("basicConstraints = critical, CA:FALSE\n");
 
         let key_usage = match (&self.key_algorithm, &self.cert_purpose) {
-            (KeyAlgorithm::EcdsaP256 | KeyAlgorithm::EcdsaP384, _) => {
+            (KeyAlgorithm::EcdsaP256 | KeyAlgorithm::EcdsaP384 | KeyAlgorithm::Ed25519, _) => {
                 "critical, digitalSignature"
             }
             (_, CertPurpose::TlsServer) => "critical, digitalSignature, keyEncipherment",
@@ -341,7 +450,10 @@ mod tests {
             street_address: Some("Hauptstrasse 1".to_string()),
             postal_code: Some("48143".to_string()),
             common_name: "mail.example.com".to_string(),
-            san: vec!["mail.example.com".to_string(), "www.example.com".to_string()],
+            san: vec![
+                "mail.example.com".to_string(),
+                "www.example.com".to_string(),
+            ],
             key_algorithm: KeyAlgorithm::EcdsaP384,
             hash_algorithm: "sha384".to_string(),
             cert_purpose: CertPurpose::TlsClient,
@@ -483,10 +595,7 @@ mod tests {
         );
 
         // French address
-        assert_eq!(
-            sanitize("123 Rue de l'Église"),
-            "123-Rue-de-l_Eglise"
-        );
+        assert_eq!(sanitize("123 Rue de l'Église"), "123-Rue-de-l_Eglise");
 
         // Mixed international - note: periods are valid characters and preserved
         assert_eq!(
@@ -518,19 +627,31 @@ mod tests {
     fn test_sanitize_cert_field_preserves_spaces() {
         assert_eq!(sanitize_for_cert_field("Hello World"), "Hello World");
         assert_eq!(sanitize_for_cert_field("New York"), "New York");
-        assert_eq!(sanitize_for_cert_field("San Francisco Bay Area"), "San Francisco Bay Area");
+        assert_eq!(
+            sanitize_for_cert_field("San Francisco Bay Area"),
+            "San Francisco Bay Area"
+        );
     }
 
     #[test]
     fn test_sanitize_cert_field_german_with_spaces() {
-        assert_eq!(sanitize_for_cert_field("Müller & Söhne GmbH"), "Mueller and Soehne GmbH");
+        assert_eq!(
+            sanitize_for_cert_field("Müller & Söhne GmbH"),
+            "Mueller and Soehne GmbH"
+        );
         assert_eq!(sanitize_for_cert_field("Stadt München"), "Stadt Muenchen");
     }
 
     #[test]
     fn test_sanitize_cert_field_collapses_multiple_spaces() {
-        assert_eq!(sanitize_for_cert_field("Too    Many   Spaces"), "Too Many Spaces");
-        assert_eq!(sanitize_for_cert_field("  Leading and trailing  "), "Leading and trailing");
+        assert_eq!(
+            sanitize_for_cert_field("Too    Many   Spaces"),
+            "Too Many Spaces"
+        );
+        assert_eq!(
+            sanitize_for_cert_field("  Leading and trailing  "),
+            "Leading and trailing"
+        );
     }
 
     #[test]
