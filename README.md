@@ -1,23 +1,32 @@
 # OpenSSL Certificate Generator
 
-A desktop application built with egui/eframe that provides a graphical interface for generating OpenSSL certificate signing requests (CSRs). The application simplifies the process of creating certificate configurations, generating keys and CSRs natively (no external OpenSSL required), and packaging certificate files.
+A desktop application built with egui/eframe that provides a graphical interface for generating certificate signing requests (CSRs). It simplifies the process of creating certificate configurations, generating key pairs and CSRs natively (no external OpenSSL installation required), and packaging the resulting files into a single zip.
 
 ## AI Disclaimer
 
-This project made heavy use of Claude. If you do not trust AI generated code for generating sensitive things like Certificates, do not use this project.
+This project made heavy use of Claude & GLM 5.2. If you do not trust AI generated code for generating sensitive things like Certificates, do not use this project.
 
 ## Features
 
 - User-friendly GUI for certificate request generation
-- Live OpenSSL configuration preview that updates as you type
-- Support for Subject Alternative Names (SANs) with auto-detection of DNS names and IP addresses
-- Optional fields: Organizational Unit, Email, Street Address, Postal Code, Key Size, Hash Algorithm
+- Live configuration preview that updates as you type
+- Support for Subject Alternative Names (SANs) with automatic detection of DNS names and IP addresses
+- Optional fields: Organizational Unit, Email, Street Address, Postal Code, Certificate Purpose (TLS Server / TLS Client)
+- Multiple key algorithms:
+  - RSA 2048 / 3072 / 4096 (with selectable hash: SHA-256 / SHA-384 / SHA-512)
+  - ECDSA P-256 and P-384
+  - Ed25519
+- Flexible export options:
+  - PEM (text) or DER (binary) encoding
+  - RSA keys can be exported as PKCS#8 or traditional PKCS#1
+  - Optional passphrase to protect the private key (encrypted PKCS#8, scrypt + AES-256-CBC) — available for all key types
+- Reuse an existing private key (paste an unencrypted PEM key or load it from a file) to generate a new CSR without generating a new key
+- Import a previous configuration from a `config.toml` file or from a previously saved zip
 - Wildcard certificate support
-- International character handling (German umlauts, French accents, Polish/Czech characters, etc.)
-- Automatic zip packaging of certificate files (.cnf, .key, .csr)
-- Auto-save to downloads folder
-- Includes recreate command for reference
-- No external OpenSSL installation required — certificate generation is handled natively
+- International character handling (German umlauts, French accents, Polish/Czech characters, etc.) — automatically transliterated to ASCII for certificate fields
+- Automatic zip packaging of certificate files (`.cnf`, `.key`, `.csr`, `config.toml`, `recreate_command.txt`)
+- Native save dialog — you choose where the zip is written
+- Includes an OpenSSL `recreate_command.txt` snippet for reference
 - Debug mode with test data generation (German locale)
 
 ## Intentionally Not Supported
@@ -36,13 +45,15 @@ These are deliberate design decisions, not missing features:
 1. Clone the repository:
 ```bash
 git clone <repository-url>
-cd egui-csr-generator
+cd openssl-cert-dioxius
 ```
 
 2. Build the project:
 ```bash
 cargo build --release
 ```
+
+The compiled binary will be available in `target/release/certificate-request-generator.exe` (on Windows).
 
 ## Usage
 
@@ -66,85 +77,33 @@ cargo run --release
    - **Locality**: City name
    - **Organization**: Company or organization name
    - **Common Name**: Domain name or service identifier
-   - **SANs**: Subject Alternative Names (DNS names or IP addresses)
 
 2. Optionally fill in **Optional Values**:
    - Organizational Unit, Email Address, Street Address, Postal Code
-   - Key Size (2048 or 4096 bits)
-   - Hash Algorithm (SHA-256, SHA-384, SHA-512)
+   - Key Algorithm (RSA 2048 / 3072 / 4096, ECDSA P-256 / P-384, Ed25519)
+   - Hash Algorithm (SHA-256 / SHA-384 / SHA-512 — RSA only; ECDSA and Ed25519 hashes are fixed by the key)
+   - Certificate Purpose (TLS Server or TLS Client)
 
-3. The **Config Preview** in the output area updates live as you type. Once all required fields are valid, the **Generate Certificate Request** button appears.
+3. Optionally configure **Export Options**:
+   - **Key Encoding**: PEM (text) or DER (binary)
+   - **Key Format** (RSA only): PKCS#8 or PKCS#1
+   - **Passphrase**: protects the private key as encrypted PKCS#8 (disabled for PKCS#1, which cannot be encrypted)
+   - **Reuse existing key**: paste an unencrypted PEM key, or load one from a file, to skip key generation
 
-4. Click **Generate Certificate Request** to:
-   - Generate the private key and CSR
-   - Save all files as a zip package to your downloads folder
-   - Display the command output
+4. Add **Subject Alternative Names (SANs)** — additional DNS names or IP addresses. The Common Name is automatically added as the first SAN.
 
-5. Optional: Use **Save Certificate Files** to manually re-save if needed.
+5. The **Config Preview** updates live as you type. Once all required fields are valid, the **Generate Certificate Request** button appears.
+
+6. Click **Generate Certificate Request** to generate the key and CSR and save them — along with the `.cnf`, `config.toml`, and `recreate_command.txt` — as a zip package through a native save dialog.
+
+### Importing a Previous Configuration
+
+Click **Import config** and select either a `config.toml` file or a previously generated zip (which contains one). The form is populated from the imported identity; export options are reset, since they are not part of the saved identity.
 
 ### Special Features
 
-- **Wildcard Certificates**: CN starting with `*.` is automatically converted for filenames (e.g., `*.example.com` becomes `wildcard.example.com.key`)
-- **Debug Mode**: In debug builds, a "Fake input" button generates test data using German locale
-
-## Development
-
-### Building for Release
-
-```bash
-cargo build --release
-```
-
-The compiled binary will be available in `target/release/certificate-request-generator.exe`
-
-## Project Structure
-
-```
-egui-csr-generator/
-├── src/
-│   ├── main.rs                        # Entry point, app state, egui App implementation
-│   ├── cert_config.rs                 # CertConfig struct and OpenSSL .cnf generation
-│   ├── openssl_native.rs              # Native key/CSR generation via rcgen + rsa
-│   └── components/
-│       ├── mod.rs                     # Module exports and zip save logic
-│       ├── form.rs                    # Certificate details form
-│       ├── execute_button.rs          # Generate Certificate Request button
-│       ├── save_button.rs             # Manual save button
-│       └── openssloutput.rs           # Config preview and command output display
-├── assets/
-│   └── JetBrainsMono-Regular.ttf      # Embedded font
-├── Cargo.toml
-└── README.md
-```
-
-## Technical Details
-
-### Core Modules
-
-- **main.rs**: Entry point containing the `CertGenApp` struct (all form state), font setup, and the egui `App` implementation. Config preview is regenerated every frame via `update_config_preview()`.
-- **cert_config.rs**: `CertConfig` struct with `generate_config()` that produces a properly formatted OpenSSL `.cnf` file including SAN support. Also contains `sanitize_for_cert_field()` for international character handling.
-- **openssl_native.rs**: Native certificate generation using `rcgen` and `rsa` — no external OpenSSL binary required.
-- **components/**: Modular egui render functions that take `&mut egui::Ui` and `&mut CertGenApp`.
-
-### Key Dependencies
-
-- **egui**: Immediate mode GUI framework
-- **eframe**: egui framework for native applications
-- **rcgen**: Native certificate and CSR generation
-- **rsa**: RSA key generation
-- **rand**: Random number generation
-- **zip**: Certificate file bundling
-- **dirs**: Downloads directory location
-- **fake**: Test data generation (debug mode only)
-- **log** & **env_logger**: Logging to timestamped files
-- **time**: Time handling and formatting
-
-### Application Flow
-
-1. User fills in certificate details through the egui form
-2. Config preview updates live in the output area as fields change — the execute button appears once all required fields are valid
-3. Clicking **Generate Certificate Request** generates the private key and CSR natively, saves a zip to the downloads folder, and displays the result
-4. Output is shown in the output area below the config preview
+- **Wildcard Certificates**: a Common Name starting with `*.` is automatically converted for filenames (e.g. `*.example.com` becomes `wildcard.example.com.key`)
+- **Debug Mode**: in debug builds, a "Fake input" button generates test data using a German locale
 
 ## License
 
